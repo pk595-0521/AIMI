@@ -1,0 +1,6 @@
+{
+  "name": "AIMI Superday",
+  "description": "Timed multi-phase workplace simulation and executive assessment platform for Consulting, Investment Banking, Business Operations, and Product Management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+enum Role {
+  APPLICANT
+  GRADER
+  EMPLOYER_ADMIN
+  SYSTEM_ADMIN
+}
+enum SessionStatus {
+  ACTIVE
+  SUBMITTED
+  EXPIRED
+}
+enum NodeCategory {
+  DIAGNOSE
+  ANALYZE
+  DECIDE
+  PILOT
+}
+enum PromptStatus {
+  PENDING
+  COMPLETE
+  FAILED
+}
+model Organization {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  users User[]
+  sessions AssessmentSession[]
+  createdAt DateTime @default(now())
+}
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  subject String @unique
+  email String @unique
+  role Role @default(APPLICANT)
+  organizationId String @db.Uuid
+  organization Organization @relation(fields: [organizationId], references: [id])
+  certifiedGrader Boolean @default(false)
+  disabled Boolean @default(false)
+  sessions AssessmentSession[]
+  evaluations Evaluation[]
+  consents LegalConsent[]
+  createdAt DateTime @default(now())
+  @@index([organizationId, role])
+}
+model AssessmentTrack {
+  id String @id
+  title String
+  version Int @default(1)
+  scenario Json
+  phaseConfigurations Json
+  rubricVersion String
+  // Numeric weights require assessment-owner calibration before production activation.
+  approved Boolean @default(false)
+  criteria RubricCriterion[]
+  sessions AssessmentSession[]
+}
+model AssessmentSession {
+  id String @id @default(uuid()) @db.Uuid
+  applicantId String @db.Uuid
+  applicant User @relation(fields: [applicantId], references: [id])
+  organizationId String @db.Uuid
+  organization Organization @relation(fields: [organizationId], references: [id])
+  trackId String
+  track AssessmentTrack @relation(fields: [trackId], references: [id])
+  scenarioVersion Int
+  // Immutable scenario at assignment, including hidden events and rubric version.
+  scenarioSnapshot Json
+  rubricSnapshot Json
+  activePhase Int @default(1)
+  phaseStartedAt DateTime @default(now())
+  phaseDeadlineAt DateTime
+  status SessionStatus @default(ACTIVE)
+  revision Int @default(0)
+  isPeerReviewComplete Boolean @default(false)
+  peerReview Json?
+  reflection String?
+  dataHandling Json?
+  work Json @default("{}")
+  hygieneEvents Json @default("[]")
+  attachments Artifact[]
+  drafts Json @default("{}")
+  roadmapResponses Json @default("{}")
+  nodes RoadmapNode[]
+  messages ScenarioMessage[]
+  prompts PromptLog[]
+  checkpoints PhaseCheckpoint[]
+  evaluations Evaluation[]
+  consents LegalConsent[]
+  createdAt DateTime @default(now())
+  submittedAt DateTime?
+  updatedAt DateTime @updatedAt
+  @@index([organizationId, status])
+  @@index([applicantId, createdAt])
+}
+model RoadmapNode {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  session AssessmentSession @relation(fields: [sessionId], references: [id])
+  key String
+  phase Int
+  category NodeCategory
+  title String
+  context String
+  purpose String
+  tradeoffs String
+  owner String?
+  dependencies String?
+  targetMilestone String?
+  triggerThreshold String?
+  positionX Float
+  positionY Float
+  connectsTo String[]
+  // Derived SVG paths; clients render as attributes, never as HTML.
+  bezierPaths String[]
+  isComplete Boolean @default(false)
+  isRevisedAfterConstraint Boolean @default(false)
+  @@unique([sessionId, key])
+}
+model ScenarioMessage {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  session AssessmentSession @relation(fields: [sessionId], references: [id])
+  key String
+  payload Json
+  dispatchedAt DateTime @default(now())
+  openedAt DateTime?
+  @@unique([sessionId, key])
+}
+model PhaseCheckpoint {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  session AssessmentSession @relation(fields: [sessionId], references: [id])
+  phase Int
+  revision Int
+  snapshot Json
+  createdAt DateTime @default(now())
+  @@unique([sessionId, revision])
+}
+model PromptLog {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  session AssessmentSession @relation(fields: [sessionId], references: [id])
+  requestId String @db.Uuid
+  phase Int
+  prompt String
+  purpose String
+  response String?
+  model String
+  provider String
+  latencyMs Int?
+  inputTokens Int?
+  outputTokens Int?
+  status PromptStatus @default(PENDING)
+  errorCode String?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  @@unique([sessionId, requestId])
+  @@index([sessionId, phase, createdAt])
+}
+model RubricCriterion {
+  id String @id
+  trackId String
+  track AssessmentTrack @relation(fields: [trackId], references: [id])
+  key String
+  name String
+  weight Float
+  maxScore Int
+  anchors Json
+  hardGateRule String?
+  @@unique([trackId, key])
+}
+model Evaluation {
+  id String @id @default(uuid()) @db.Uuid
+  sessionId String @db.Uuid
+  session AssessmentSession @relation(fields: [sessionId], references: [id])
+  graderId String @db.Uuid
+  grader User @relation(fields: [graderId], references: [id])
+  rubricVersion String
+  advisory Json?
+  scores Json @default("{}")
+  overallScore Float?
+  feedback String @default("")
+  planningCapApplied Boolean @default(false)
+  humanDecision String?
+  finalizedAt DateTime?
+  revision Int @default(0)
+  updatedAt DateTime @updatedAt
+  @@unique([sessionId, graderId])
+}
+model LegalConsent {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id])
+  sessionId String @db.Uuid
+  session AssessmentSession @relation(fields: [sessionId], references: [id])
+  policyVersion String
+  policyDigest String
+  monitoringAccepted Boolean
+  zeroRetrainingAccepted Boolean
+  humanReviewAccepted Boolean
+  ipAddress String
+  userAgent String
+  acceptedAt DateTime @default(now())
+  @@unique([sessionId, policyVersion])
+  @@index([userId, acceptedAt])
+}
+
+model Artifact {
+ id String @id @default(uuid()) @db.Uuid
+ sessionId String @db.Uuid
+ session AssessmentSession @relation(fields:[sessionId], references:[id])
+ phase Int
+ name String
+ mimeType String
+ size Int
+ sha256 String
+ bytes Bytes
+ createdAt DateTime @default(now())
+ @@index([sessionId, createdAt])
+}
