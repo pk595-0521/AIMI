@@ -14,5 +14,12 @@ CREATE INDEX "Artifact_sessionId_createdAt_idx" ON "Artifact"("sessionId", "crea
 
 -- Keep uploaded candidate artifacts private to the application server.
 ALTER TABLE "Artifact" ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE "Artifact" FROM anon, authenticated;
-
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    REVOKE ALL ON TABLE "Artifact" FROM anon;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    REVOKE ALL ON TABLE "Artifact" FROM authenticated;
+  END IF;
+END $$;
