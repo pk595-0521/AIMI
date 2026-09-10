@@ -11,10 +11,20 @@ services:
         value: production
       - key: PORT
         value: "10000"
-      - key: DATABASE_URL
-        sync: false
-      - key: APP_ORIGIN
-        sync: false
+           - key: DATABASE_URL
+             sync: false
+           - key: SUPABASE_DATABASE_URL
+             sync: false
+           - key: NEXT_PUBLIC_SUPABASE_URL
+             sync: false
+           - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+             sync: false
+           - key: SUPABASE_SERVICE_ROLE_KEY
+             sync: false
+           - key: LLM_API_KEY
+             sync: false
+           - key: APP_ORIGIN
+             sync: false
       - key: AUTH_JWKS_URL
         sync: false
       - key: AUTH_ISSUER
