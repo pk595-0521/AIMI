@@ -130,7 +130,7 @@ export const TrackSelectionView: React.FC<TrackSelectionViewProps> = ({ onSelect
                     onClick={() => onSelectTrack(track.id)}
                     className="px-4 py-2 rounded-full bg-black hover:bg-neutral-800 text-white text-xs font-medium flex items-center space-x-1.5 transition-all"
                   >
-                    <span>Launch Simulation</span>
+                    <span>Start Assessment</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>

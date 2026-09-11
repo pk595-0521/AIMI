@@ -15,6 +15,7 @@ import { scoreRubric } from './workflow';
 import type { TrackConfig } from '../src/types';
 import { betaSignup } from './beta-signup';
 import { canAccessPortal } from '../src/auth-roles';
+import { assignments } from './assignments';
 const handler = (fn: (req: AuthRequest, res: Response) => Promise<any>) => (req: Request, res: Response, next: NextFunction) => { fn(req as AuthRequest, res).catch(next); };
 export const api = Router();
 api.get('/health', (_req, res) => res.json({ status: 'ok' }));
@@ -27,6 +28,7 @@ api.use((req: AuthRequest, res, next) => {
 });
 api.use(rateLimit({ windowMs: 60000, limit: 180, keyGenerator: req => (req as AuthRequest).user.id, standardHeaders: 'draft-8', legacyHeaders: false }));
 api.get('/me', handler(async (req,res) => res.json({ role: req.user.role, certifiedGrader: req.user.certifiedGrader, policy, governanceReady: governanceReady() })));
+api.use(assignments);
 api.get('/tracks', handler(async (req,res) => {
   if (!canAccessPortal(req.user.role, 'assessment')) throw new HttpError(403, 'Candidate access required');
   const assigned = await db.assessmentSession.findMany({ where: { applicantId: req.user.id, organizationId: req.user.organizationId }, distinct: ['trackId'] });
@@ -115,8 +117,8 @@ async function reviewAccess(req: AuthRequest, sessionId: string) {
 }
 api.get('/grader/sessions', handler(async (req,res) => {
   if (req.user.role === 'APPLICANT') throw new HttpError(403,'Reviewer access required');
-  const sessions = await db.assessmentSession.findMany({ where: { ...(req.user.role === 'SYSTEM_ADMIN' ? {} : { organizationId: req.user.organizationId }), ...(req.user.role === 'GRADER' ? { evaluations: { some: { graderId: req.user.id } } } : {}) }, select: { id: true, trackId: true, status: true, createdAt: true, applicant: { select: { email: true } } }, take: 100, orderBy: { createdAt: 'desc' } });
-  res.json(sessions);
+  const sessions = await db.assessmentSession.findMany({ where: { ...(req.user.role === 'SYSTEM_ADMIN' ? {} : { organizationId: req.user.organizationId }), ...(req.user.role === 'GRADER' ? { OR: [{ evaluations: { some: { graderId: req.user.id } } }, { evaluations: { none: {} } }] } : {}) }, select: { id: true, trackId: true, status: true, createdAt: true, applicant: { select: { email: true } }, evaluations: { select: { graderId: true } }, _count: { select: { consents: true } } }, take: 100, orderBy: { createdAt: 'desc' } });
+  res.json(sessions.map(s => ({ ...s, canClaim: req.user.role === 'GRADER' && !s.evaluations.length, queueStatus: s.status === 'ACTIVE' ? s._count.consents ? 'in_progress' : 'assigned' : s.status.toLowerCase() })));
 }));
 api.get('/grader/:sessionId', handler(async (req,res) => {
   const id = z.string().uuid().parse(req.params.sessionId); const s = await reviewAccess(req,id);

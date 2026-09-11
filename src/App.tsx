@@ -45,6 +45,7 @@ import { UserCheck, Inbox, ShieldCheck, X, AlertTriangle, Lock } from 'lucide-re
 import { supabase, getSupabaseSession } from './services/supabase';
 import { LandingPage, SignupPage, LoginPage, AuthRequired, AccessDenied } from './components/auth/AuthPages';
 import { canAccessPortal } from './auth-roles';
+import { PracticeTracks } from './components/admin/Assignments';
 
 export default function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname.replace(/\/$/, '') || '/');
@@ -71,6 +72,7 @@ export default function App() {
   // remain public landing links and never enter the assessment API.
   if (pathname === '/demo' && isDevelopment) return <CandidateAssessment demo />;
   if (pathname === '/demo/grader' && isDevelopment) return <GraderDashboard canScore />;
+  if (pathname === '/demo/employer' && isDevelopment) return <GraderDashboard canScore={false} admin />;
   if (pathname === '/' || pathname === '/demo' || pathname.startsWith('/demo/')) return <LandingPage session={authSession} onSignOut={signOut} />;
   if (!authReady) return <p role="status" className="p-8">Loading account…</p>;
   if (!authSession) return <AuthRequired next={pathname} />;
@@ -87,7 +89,7 @@ function PortalApp({ portal }: { portal: 'grader' | 'employer' }) {
   if (!identity) return <p role="status" className="p-8">Loading protected portal…</p>;
   const allowed = canAccessPortal(identity.role, portal);
   if (!allowed) return <AccessDenied portal={portal} />;
-  return <GraderDashboard canScore={portal === 'grader' && identity.role === 'GRADER' && identity.certifiedGrader} />;
+  return <GraderDashboard admin={portal === 'employer'} isGrader={identity.role === 'GRADER'} canScore={portal === 'grader' && identity.role === 'GRADER' && identity.certifiedGrader} />;
 }
 
 function CandidateAssessment({ demo = false }: { demo?: boolean }) {
@@ -102,7 +104,7 @@ function CandidateAssessment({ demo = false }: { demo?: boolean }) {
   if(error) return <div className="min-h-dvh p-8 bg-neutral-50"><h1 className="text-2xl mb-4">AIMI Superday</h1><p role="alert" className="work-warning">{error}</p><p className="mt-3 text-sm">Your account may need an assessment assignment from an AIMI administrator.</p><button className="border rounded-full px-4 py-2 mt-4" onClick={() => window.location.reload()}>Retry</button></div>;
   if(!identity) return <p role="status" className="p-8">{demo ? 'Loading assessment demo…' : 'Loading secure assessment…'}</p>;
   if(!canAccessPortal(identity.role, 'assessment')) return <AccessDenied portal="assessment" />;
-  if(!trackId) return <TrackSelectionView tracks={tracks} onSelectTrack={load}/>;
+  if(!trackId) return <><PracticeTracks onAssigned={id => { api('/tracks').then(setTracks).catch(e => setError(e.message)); void load(id as TrackId); }} /><TrackSelectionView tracks={tracks} onSelectTrack={load}/></>;
   if(!session) return <p role="status" className="p-8">Loading assigned assessment…</p>;
   if(!session.consented) return <LegalConsentModal sessionId={session.id} policy={identity.policy} ready={identity.governanceReady} onAccepted={() => load(trackId)}/>;
   if(session.track.designVersion===2)return <RevisedSimulationApp key={session.id} initialSession={session} onSwitch={()=>{setTrackId(null);setSession(null);}}/>;

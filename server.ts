@@ -4,8 +4,10 @@ import helmet from 'helmet';
 import path from 'node:path';
 import { api, apiError } from './server/routes';
 import { db } from './server/db';
+import { seedCatalog } from './server/catalog';
 const app = express();
 const production = process.env.NODE_ENV === 'production';
+if (process.env.DATABASE_URL) await seedCatalog();
 if (production && ['DATABASE_URL','APP_ORIGIN','AUTH_JWKS_URL','AUTH_ISSUER','AUTH_AUDIENCE'].some(k => !process.env[k])) throw new Error('Missing required production configuration');
 app.disable('x-powered-by');
 // Configure only exact trusted proxy addresses, never trust arbitrary forwarding headers.

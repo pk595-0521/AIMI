@@ -16,7 +16,8 @@ try{
  await pg.initialise();await pg.start();await pg.createDatabase('aimi_test');
  process.env.DATABASE_URL=`postgresql://aimi_test:local-test-only@127.0.0.1:${port}/aimi_test`;
  const client=pg.getPgClient('aimi_test');await client.connect();
- for(const migration of ['202609100001_initial','202609100002_revised_design'])await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`,'utf8'));await client.end();
+ for(const migration of ['202609100001_initial','202609100002_revised_design'])await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`,'utf8'));
+ await client.query('CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text)');await client.end();
  db=(await import('../server/db')).db;
  const {privateKey,publicKey}=await generateKeyPair('RS256');const jwk={...await exportJWK(publicKey),kid:'local-test',alg:'RS256',use:'sig'};
  const idp=express();idp.get('/jwks',(_req,res)=>res.json({keys:[jwk]}));issuer=idp.listen(0,'127.0.0.1');await new Promise<void>(r=>issuer.on('listening',r));
@@ -28,9 +29,30 @@ try{
  const applicant=await user('APPLICANT','applicant'),grader=await user('GRADER','grader'),outsider=await user('APPLICANT','outsider',otherOrg.id),employer=await user('EMPLOYER_ADMIN','employer');
  async function call(who:any,url:string,body?:any,expected=200,headers:Record<string,string>={}) {const response=await fetch(origin+'/api'+url,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+who.token,Origin:origin,...(body===undefined?{}:{'Content-Type':'application/json'}),...headers},body:body===undefined?undefined:Buffer.isBuffer(body)?body:JSON.stringify(body)});const content=response.headers.get('content-type')||'';const data=content.includes('json')?await response.json():Buffer.from(await response.arrayBuffer());assert.equal(response.status,expected,`${url}: ${JSON.stringify(data).slice(0,400)}`);return data;}
  let lastSession:any;
+ const stableJson=(value:any)=>JSON.parse(JSON.stringify(value,(_key,v)=>typeof v==='number'?Number(v.toPrecision(14)):v));
+ const {seedCatalog}=await import('../server/catalog');await seedCatalog();await seedCatalog();
+ assert.equal(await db.assessmentTrack.count(),4);
+ const catalog=await call(applicant,'/catalog');assert.equal(catalog.length,4);assert.ok(catalog.every((t:any)=>!t.exhibits&&!t.rubric&&!t.emergencyConstraint.memoPoints));
+ await call(applicant,'/admin/people',undefined,403);
+ const people=await call(employer,'/admin/people');assert.ok(people.some((p:any)=>p.id===applicant.id));assert.ok(!people.some((p:any)=>p.id===outsider.id));
+ await call(employer,'/admin/assignments',{candidateId:outsider.id,trackId:'consulting-v2'},404);
+ await call(grader,'/practice',{trackId:'consulting-v2'},403);
+ await call(applicant,'/practice',{trackId:'missing'},404);
+ const trainee=await user('GRADER','trainee');await db.user.update({where:{id:trainee.id},data:{certifiedGrader:false}});
+ await call(trainee,'/grader/claim',{sessionId:'00000000-0000-0000-0000-000000000000'},403);
+ await call(applicant,`/admin/graders/${trainee.id}/certify`,{confirmed:true},403);
+ await call(employer,`/admin/graders/${trainee.id}/certify`,{confirmed:true});
+ assert.equal((await db.user.findUniqueOrThrow({where:{id:trainee.id}})).certifiedGrader,true);
  for(const t of TRACK_LIST){
-  const registry=await db.assessmentTrack.create({data:{id:t.id+'-v2',title:t.title,version:2,scenario:t,phaseConfigurations:t.phases,rubricVersion:'test-v2',approved:true}});
-  const assigned=await db.assessmentSession.create({data:{applicantId:applicant.id,organizationId:org.id,trackId:registry.id,scenarioVersion:2,scenarioSnapshot:t,rubricSnapshot:t.rubric,phaseDeadlineAt:new Date(),drafts:Object.fromEntries(t.deliverables.map(d=>[d.id,{id:d.id,value:''}])),evaluations:{create:{graderId:grader.id,rubricVersion:'test-v2'}}}});
+  const registry=await db.assessmentTrack.findUniqueOrThrow({where:{id:t.id+'-v2'}});assert.deepEqual(stableJson(registry.scenario),stableJson(t));
+  const practice=await call(applicant,'/practice',{trackId:registry.id},201);
+  assert.equal((await call(applicant,'/practice',{trackId:registry.id},201)).sessionId,practice.sessionId);
+  const queue=await call(grader,'/grader/sessions');assert.ok(queue.some((s:any)=>s.id===practice.sessionId&&s.canClaim&&s.queueStatus==='assigned'));
+  await call(grader,'/grader/claim',{sessionId:practice.sessionId});
+  await call(trainee,'/grader/claim',{sessionId:practice.sessionId},409);
+  const assignment=await call(employer,'/admin/assignments',{candidateId:applicant.id,trackId:registry.id,graderId:grader.id},201);assert.equal(assignment.sessionId,practice.sessionId);
+  const assigned=await db.assessmentSession.findUniqueOrThrow({where:{id:assignment.sessionId}});
+  assert.deepEqual(stableJson(assigned.scenarioSnapshot),stableJson(t));assert.deepEqual(stableJson(assigned.rubricSnapshot),stableJson(t.rubric));
   let s=await call(applicant,'/assessment?trackId='+registry.id);assert.equal(s.consented,false);assert.equal(s.track,undefined);
   await call(applicant,'/legal/consent',{sessionId:assigned.id,policyVersion:policy.version,monitoringAccepted:true,zeroRetrainingAccepted:true,humanReviewAccepted:true},201);
   s=await call(applicant,'/assessment?trackId='+registry.id);assert.equal(s.phase,1);
