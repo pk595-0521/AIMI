@@ -20,6 +20,8 @@ await landing.getByRole('link',{name:/^Employer \/ Admin Portal/}).waitFor();
 await landing.goto(base+'/auth/signup');
 await landing.getByRole('heading',{name:'Create your account'}).waitFor();
 await landing.getByLabel('Full Name').waitFor();
+await landing.getByLabel('Access Key / Invite Code (Optional)').waitFor();
+await landing.getByText('Leave blank for Candidate access, or enter your Grader/Employer key.').waitFor();
 await landing.goto(base+'/auth/login');
 await landing.getByRole('heading',{name:'Welcome back'}).waitFor();
 await landing.close();

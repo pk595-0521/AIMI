@@ -1,21 +1,21 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { Request, Response, NextFunction } from 'express';
-import type { User } from '@prisma/client';
+import type { User, Role, Prisma } from '@prisma/client';
 import { db } from './db';
 export interface AuthRequest extends Request { user: User }
 let jwks: ReturnType<typeof createRemoteJWKSet>;
 const SELF_SERVICE_ORGANIZATION_ID = '00000000-0000-0000-0000-000000000001';
 
-async function provisionSupabaseUser(subject: string, email: string) {
-  const organization = await db.organization.upsert({
+export async function provisionSupabaseUser(subject: string, email: string, role: Role = 'APPLICANT', client: Prisma.TransactionClient = db) {
+  const organization = await client.organization.upsert({
     where: { id: SELF_SERVICE_ORGANIZATION_ID },
     update: {},
     create: { id: SELF_SERVICE_ORGANIZATION_ID, name: 'AIMI self-service candidates' },
   });
-  return db.user.upsert({
+  return client.user.upsert({
     where: { subject },
-    update: { email, disabled: false },
-    create: { subject, email, organizationId: organization.id, role: 'APPLICANT' },
+    update: {},
+    create: { subject, email, organizationId: organization.id, role },
   });
 }
 

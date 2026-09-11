@@ -1,14 +1,17 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { ArrowRight, LockKeyhole, ShieldCheck, Sparkles } from 'lucide-react';
 import { supabase, supabaseAuthConfigured } from '../../services/supabase';
+import { api } from '../../services/api';
+import { homeForRole, type Portal } from '../../auth-roles';
 
 function go(path: string) {
   window.location.assign(path);
 }
 
-function internalNext(value: string | null) {
-  return value && value.startsWith('/') && !value.startsWith('//') ? value : '/assessment';
+async function goToPortal() {
+  const identity = await api<{ role: string }>('/me');
+  go(homeForRole(identity.role));
 }
 
 export function LandingPage({ session, onSignOut }: { session: Session | null; onSignOut: () => void }) {
@@ -100,8 +103,8 @@ function AuthUnavailable() {
 }
 
 export function SignupPage() {
-  const next = useMemo(() => internalNext(new URLSearchParams(window.location.search).get('next')), []);
   const [name, setName] = useState('');
+  const [accessKey, setAccessKey] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -112,14 +115,10 @@ export function SignupPage() {
     if (!supabase) { setError('Supabase Auth is not configured for this build.'); return; }
     setBusy(true);
     try {
-      const { data, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: { data: { full_name: name.trim() }, emailRedirectTo: `${window.location.origin}/auth/login` },
-      });
+      await api('/auth/signup', { name: name.trim(), email: email.trim(), password, access_key: accessKey });
+      const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (authError) throw authError;
-      if (data.session) go(next);
-      else setMessage('Account created. Check your email to confirm the account, then sign in.');
+      await goToPortal();
     } catch (e) { setError((e as Error).message || 'Unable to create the account.'); }
     finally { setBusy(false); }
   }
@@ -129,6 +128,7 @@ export function SignupPage() {
       <label className="work-field"><span>Full Name</span><input required autoComplete="name" value={name} onChange={e => setName(e.target.value)} placeholder="Jordan Lee" /></label>
       <label className="work-field"><span>Email Address</span><input required type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></label>
       <label className="work-field"><span>Password</span><input required minLength={8} type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" /></label>
+      <label className="work-field"><span>Access Key / Invite Code (Optional)</span><input name="access_key" type="password" autoComplete="off" maxLength={256} value={accessKey} onChange={e => setAccessKey(e.target.value)} aria-describedby="access-key-help" /><small id="access-key-help">Leave blank for Candidate access, or enter your Grader/Employer key.</small></label>
       {error && <p role="alert" className="work-warning">{error}</p>}
       {message && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
       <button className="work-primary w-full justify-center" disabled={busy || !supabase}>{busy ? 'Creating account…' : 'Create account'} <ArrowRight className="h-4 w-4" /></button>
@@ -138,7 +138,6 @@ export function SignupPage() {
 }
 
 export function LoginPage() {
-  const next = useMemo(() => internalNext(new URLSearchParams(window.location.search).get('next')), []);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -150,7 +149,7 @@ export function LoginPage() {
     try {
       const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (authError) throw authError;
-      go(next);
+      await goToPortal();
     } catch (e) { setError((e as Error).message || 'Unable to sign in.'); }
     finally { setBusy(false); }
   }
@@ -167,11 +166,12 @@ export function LoginPage() {
 }
 
 export function AuthRequired({ next }: { next: string }) {
+  useEffect(() => { window.location.replace(`/auth/login?next=${encodeURIComponent(next)}`); }, [next]);
   return <AuthShell title="Sign in to continue" subtitle="This portal is protected by your AIMI account. Your session will persist as you move between assessment pages.">
     <div className="flex flex-wrap gap-3"><a href={`/auth/login?next=${encodeURIComponent(next)}`} className="work-primary">Sign In <ArrowRight className="h-4 w-4" /></a><a href={`/auth/signup?next=${encodeURIComponent(next)}`} className="work-secondary">Get Started / Sign Up</a></div>
   </AuthShell>;
 }
 
-export function AccessDenied({ portal }: { portal: 'grader' | 'employer' }) {
-  return <main className="min-h-dvh bg-[#FAFAFA] p-6 text-[#1A1A1A] sm:p-10"><div className="mx-auto max-w-xl work-card bg-white"><p className="work-eyebrow">Protected portal</p><h1 className="text-2xl font-medium">{portal === 'grader' ? 'Grader access required' : 'Employer / Admin access required'}</h1><p className="mt-3 text-sm leading-6 text-[#666]">Your account is signed in, but it has not been assigned this portal role. Ask an AIMI administrator to update your role, then sign in again.</p><a href="/" className="work-secondary mt-6">Return home</a></div></main>;
+export function AccessDenied({ portal }: { portal: Portal }) {
+  return <main className="min-h-dvh bg-[#FAFAFA] p-6 text-[#1A1A1A] sm:p-10"><div className="mx-auto max-w-xl work-card bg-white"><p className="work-eyebrow">Protected portal</p><h1 className="text-2xl font-medium">{portal === 'assessment' ? 'Candidate access required' : portal === 'grader' ? 'Grader access required' : 'Employer / Admin access required'}</h1><p className="mt-3 text-sm leading-6 text-[#666]">Your account is signed in, but it has not been assigned this portal role. Ask an AIMI administrator to update your role, then sign in again.</p><a href="/" className="work-secondary mt-6">Return home</a></div></main>;
 }

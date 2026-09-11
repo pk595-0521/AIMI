@@ -44,6 +44,7 @@ import { TrackSelectionView } from './components/track-selection/TrackSelectionV
 import { UserCheck, Inbox, ShieldCheck, X, AlertTriangle, Lock } from 'lucide-react';
 import { supabase, getSupabaseSession } from './services/supabase';
 import { LandingPage, SignupPage, LoginPage, AuthRequired, AccessDenied } from './components/auth/AuthPages';
+import { canAccessPortal } from './auth-roles';
 
 export default function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname.replace(/\/$/, '') || '/');
@@ -73,8 +74,8 @@ export default function App() {
   if (pathname === '/' || pathname === '/demo' || pathname.startsWith('/demo/')) return <LandingPage session={authSession} onSignOut={signOut} />;
   if (!authReady) return <p role="status" className="p-8">Loading account…</p>;
   if (!authSession) return <AuthRequired next={pathname} />;
-  if (pathname === '/grader') return <PortalApp portal="grader" />;
-  if (pathname === '/employer' || pathname === '/admin') return <PortalApp portal="employer" />;
+  if (pathname === '/grader' || pathname.startsWith('/grader/')) return <PortalApp portal="grader" />;
+  if (pathname === '/employer' || pathname.startsWith('/employer/') || pathname === '/admin' || pathname.startsWith('/admin/')) return <PortalApp portal="employer" />;
   return <CandidateAssessment />;
 }
 
@@ -84,7 +85,7 @@ function PortalApp({ portal }: { portal: 'grader' | 'employer' }) {
   useEffect(() => { api('/me').then(setIdentity).catch(e => setError(e.message)); }, []);
   if (error) return <div className="min-h-dvh bg-neutral-50 p-8"><h1 className="text-2xl">AIMI Superday</h1><p role="alert" className="mt-4 work-warning">{error}</p><a className="work-secondary mt-4" href="/auth/login">Sign in again</a></div>;
   if (!identity) return <p role="status" className="p-8">Loading protected portal…</p>;
-  const allowed = portal === 'grader' ? ['GRADER', 'SYSTEM_ADMIN'].includes(identity.role) : ['EMPLOYER_ADMIN', 'SYSTEM_ADMIN', 'GRADER'].includes(identity.role);
+  const allowed = canAccessPortal(identity.role, portal);
   if (!allowed) return <AccessDenied portal={portal} />;
   return <GraderDashboard canScore={portal === 'grader' && identity.role === 'GRADER' && identity.certifiedGrader} />;
 }
@@ -96,11 +97,11 @@ function CandidateAssessment({ demo = false }: { demo?: boolean }) {
   const [error, setError] = useState('');
   const [trackId, setTrackId] = useState<TrackId | null>(null);
   useEffect(() => { api('/me').then(setIdentity).catch(e => setError(e.message)); }, []);
-  useEffect(() => { if(identity?.role === 'APPLICANT') api('/tracks').then(setTracks).catch(e => setError(e.message)); }, [identity]);
+  useEffect(() => { if(identity && canAccessPortal(identity.role, 'assessment')) api('/tracks').then(setTracks).catch(e => setError(e.message)); }, [identity]);
   async function load(id: TrackId) { setError(''); setSession(null); setTrackId(id); try { setSession(await api('/assessment?trackId=' + id)); } catch(e) { setError((e as Error).message); } }
   if(error) return <div className="min-h-dvh p-8 bg-neutral-50"><h1 className="text-2xl mb-4">AIMI Superday</h1><p role="alert" className="work-warning">{error}</p><p className="mt-3 text-sm">Your account may need an assessment assignment from an AIMI administrator.</p><button className="border rounded-full px-4 py-2 mt-4" onClick={() => window.location.reload()}>Retry</button></div>;
   if(!identity) return <p role="status" className="p-8">{demo ? 'Loading assessment demo…' : 'Loading secure assessment…'}</p>;
-  if(identity.role !== 'APPLICANT') return <GraderDashboard canScore={identity.role === 'GRADER' && identity.certifiedGrader}/>;
+  if(!canAccessPortal(identity.role, 'assessment')) return <AccessDenied portal="assessment" />;
   if(!trackId) return <TrackSelectionView tracks={tracks} onSelectTrack={load}/>;
   if(!session) return <p role="status" className="p-8">Loading assigned assessment…</p>;
   if(!session.consented) return <LegalConsentModal sessionId={session.id} policy={identity.policy} ready={identity.governanceReady} onAccepted={() => load(trackId)}/>;

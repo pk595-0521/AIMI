@@ -13,9 +13,12 @@ import {unsafePrompt,sanitizedContext} from './governance';
 import {automatedAdvisory,evaluationEvidence,graderPrompt} from './evaluation';
 import { scoreRubric } from './workflow';
 import type { TrackConfig } from '../src/types';
+import { betaSignup } from './beta-signup';
+import { canAccessPortal } from '../src/auth-roles';
 const handler = (fn: (req: AuthRequest, res: Response) => Promise<any>) => (req: Request, res: Response, next: NextFunction) => { fn(req as AuthRequest, res).catch(next); };
 export const api = Router();
 api.get('/health', (_req, res) => res.json({ status: 'ok' }));
+api.use('/auth', betaSignup);
 api.use(authenticate);
 api.use((req: AuthRequest, res, next) => {
   // Required even for cookie-authenticated requests; never trust an arbitrary Host header.
@@ -25,10 +28,12 @@ api.use((req: AuthRequest, res, next) => {
 api.use(rateLimit({ windowMs: 60000, limit: 180, keyGenerator: req => (req as AuthRequest).user.id, standardHeaders: 'draft-8', legacyHeaders: false }));
 api.get('/me', handler(async (req,res) => res.json({ role: req.user.role, certifiedGrader: req.user.certifiedGrader, policy, governanceReady: governanceReady() })));
 api.get('/tracks', handler(async (req,res) => {
+  if (!canAccessPortal(req.user.role, 'assessment')) throw new HttpError(403, 'Candidate access required');
   const assigned = await db.assessmentSession.findMany({ where: { applicantId: req.user.id, organizationId: req.user.organizationId }, distinct: ['trackId'] });
   res.json(assigned.map(s => { const t=s.scenarioSnapshot as unknown as TrackConfig; return { id:s.trackId, title:t.title, companyName:t.companyName, roleTitle:t.roleTitle, companyBackground:t.companyBackground, activeObjective:t.activeObjective, phases:t.phases.map(({id,number,title,subtitle,durationSeconds})=>({id,number,title,subtitle,durationSeconds})), deliverables:t.deliverables.map(d=>({id:d.id})), emergencyConstraint:{title:`A new development arrives in segment ${t.shockSegment||3}`} }; }));
 }));
 api.get('/assessment', handler(async (req,res) => {
+  if (!canAccessPortal(req.user.role, 'assessment')) throw new HttpError(403, 'Candidate access required');
   const trackId = z.string().parse(req.query.trackId);
   const s = await db.assessmentSession.findFirst({ where: { applicantId: req.user.id, organizationId: req.user.organizationId, trackId }, orderBy: { createdAt: 'desc' }, include: { nodes: true, messages: true } });
   if (!s) throw new HttpError(404, 'No assessment has been assigned for this track');

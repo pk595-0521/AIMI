@@ -10,7 +10,8 @@ if (production && ['DATABASE_URL','APP_ORIGIN','AUTH_JWKS_URL','AUTH_ISSUER','AU
 app.disable('x-powered-by');
 // Configure only exact trusted proxy addresses, never trust arbitrary forwarding headers.
 if (process.env.TRUSTED_PROXY_IPS) app.set('trust proxy',process.env.TRUSTED_PROXY_IPS.split(','));
-app.use(helmet({ contentSecurityPolicy: production ? { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], connectSrc: ["'self'"], imgSrc: ["'self'",'data:'], frameAncestors: ["'none'"] } } : false }));
+const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+app.use(helmet({ contentSecurityPolicy: production ? { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], connectSrc: ["'self'", ...(supabaseOrigin ? [new URL(supabaseOrigin).origin] : [])], imgSrc: ["'self'",'data:'], frameAncestors: ["'none'"] } } : false }));
 app.use(express.json({ limit: '1mb' }));
 app.use('/api',api);
 app.use(apiError);
