@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import {
   TrackId,
   PhaseId,
@@ -41,8 +42,54 @@ import { Phase3EmergencyAlertModal } from './components/modals/Phase3EmergencyAl
 import { AssessmentSubmittedModal } from './components/modals/AssessmentSubmittedModal';
 import { TrackSelectionView } from './components/track-selection/TrackSelectionView';
 import { UserCheck, Inbox, ShieldCheck, X, AlertTriangle, Lock } from 'lucide-react';
+import { supabase, getSupabaseSession } from './services/supabase';
+import { LandingPage, SignupPage, LoginPage, AuthRequired, AccessDenied } from './components/auth/AuthPages';
 
 export default function App() {
+  const [pathname, setPathname] = useState(() => window.location.pathname.replace(/\/$/, '') || '/');
+  const [authSession, setAuthSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  useEffect(() => {
+    const onNavigate = () => setPathname(window.location.pathname.replace(/\/$/, '') || '/');
+    window.addEventListener('popstate', onNavigate);
+    return () => window.removeEventListener('popstate', onNavigate);
+  }, []);
+  useEffect(() => {
+    let active = true;
+    void getSupabaseSession().then(session => { if (active) { setAuthSession(session); setAuthReady(true); } }).catch(() => { if (active) setAuthReady(true); });
+    if (!supabase) return () => { active = false; };
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { if (active) setAuthSession(session); });
+    return () => { active = false; subscription.unsubscribe(); };
+  }, []);
+  const signOut = async () => { await supabase?.auth.signOut(); window.location.assign('/'); };
+  if (pathname === '/auth/signup') return <SignupPage />;
+  if (pathname === '/auth/login') return <LoginPage />;
+  const isDevelopment = Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV);
+  // The fixture-only demo keeps the browser smoke test deterministic without
+  // introducing a production authentication bypass. Production /demo links
+  // remain public landing links and never enter the assessment API.
+  if (pathname === '/demo' && isDevelopment) return <CandidateAssessment demo />;
+  if (pathname === '/demo/grader' && isDevelopment) return <GraderDashboard canScore />;
+  if (pathname === '/' || pathname === '/demo' || pathname.startsWith('/demo/')) return <LandingPage session={authSession} onSignOut={signOut} />;
+  if (!authReady) return <p role="status" className="p-8">Loading account…</p>;
+  if (!authSession) return <AuthRequired next={pathname} />;
+  if (pathname === '/grader') return <PortalApp portal="grader" />;
+  if (pathname === '/employer' || pathname === '/admin') return <PortalApp portal="employer" />;
+  return <CandidateAssessment />;
+}
+
+function PortalApp({ portal }: { portal: 'grader' | 'employer' }) {
+  const [identity, setIdentity] = useState<any>(null);
+  const [error, setError] = useState('');
+  useEffect(() => { api('/me').then(setIdentity).catch(e => setError(e.message)); }, []);
+  if (error) return <div className="min-h-dvh bg-neutral-50 p-8"><h1 className="text-2xl">AIMI Superday</h1><p role="alert" className="mt-4 work-warning">{error}</p><a className="work-secondary mt-4" href="/auth/login">Sign in again</a></div>;
+  if (!identity) return <p role="status" className="p-8">Loading protected portal…</p>;
+  const allowed = portal === 'grader' ? ['GRADER', 'SYSTEM_ADMIN'].includes(identity.role) : ['EMPLOYER_ADMIN', 'SYSTEM_ADMIN', 'GRADER'].includes(identity.role);
+  if (!allowed) return <AccessDenied portal={portal} />;
+  return <GraderDashboard canScore={portal === 'grader' && identity.role === 'GRADER' && identity.certifiedGrader} />;
+}
+
+function CandidateAssessment({ demo = false }: { demo?: boolean }) {
   const [identity, setIdentity] = useState<any>(null);
   const [session, setSession] = useState<any>(null);
   const [tracks, setTracks] = useState<TrackConfig[]>([]);
@@ -51,8 +98,8 @@ export default function App() {
   useEffect(() => { api('/me').then(setIdentity).catch(e => setError(e.message)); }, []);
   useEffect(() => { if(identity?.role === 'APPLICANT') api('/tracks').then(setTracks).catch(e => setError(e.message)); }, [identity]);
   async function load(id: TrackId) { setError(''); setSession(null); setTrackId(id); try { setSession(await api('/assessment?trackId=' + id)); } catch(e) { setError((e as Error).message); } }
-  if(error) return <div className="min-h-dvh p-8 bg-neutral-50"><h1 className="text-2xl mb-4">AIMI Superday</h1><p role="alert">{error}</p><p className="mt-3 text-sm">Use your organization's sign-in and assigned assessment link.</p><button className="border rounded-full px-4 py-2 mt-4" onClick={() => window.location.reload()}>Retry</button></div>;
-  if(!identity) return <p role="status" className="p-8">Loading secure assessment…</p>;
+  if(error) return <div className="min-h-dvh p-8 bg-neutral-50"><h1 className="text-2xl mb-4">AIMI Superday</h1><p role="alert" className="work-warning">{error}</p><p className="mt-3 text-sm">Your account may need an assessment assignment from an AIMI administrator.</p><button className="border rounded-full px-4 py-2 mt-4" onClick={() => window.location.reload()}>Retry</button></div>;
+  if(!identity) return <p role="status" className="p-8">{demo ? 'Loading assessment demo…' : 'Loading secure assessment…'}</p>;
   if(identity.role !== 'APPLICANT') return <GraderDashboard canScore={identity.role === 'GRADER' && identity.certifiedGrader}/>;
   if(!trackId) return <TrackSelectionView tracks={tracks} onSelectTrack={load}/>;
   if(!session) return <p role="status" className="p-8">Loading assigned assessment…</p>;
@@ -95,6 +142,16 @@ function SimulationApp({ initialSession, onSwitch }: { initialSession: any; onSw
   const [showTrackSelection, setShowTrackSelection] = useState(false);
   const [isCopilotOpen, setIsCopilotOpen] = useState(() => window.innerWidth >= 1280);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(false);
+  useEffect(() => {
+    const closeDesktopDrawersOnMobile = () => {
+      if (window.innerWidth < 1280) {
+        setIsCopilotOpen(false);
+        setIsLeftSidebarOpen(false);
+      }
+    };
+    window.addEventListener('resize', closeDesktopDrawersOnMobile);
+    return () => window.removeEventListener('resize', closeDesktopDrawersOnMobile);
+  }, []);
 
   // Deep-linking selections
   const [selectedExhibitId, setSelectedExhibitId] = useState<string | undefined>(undefined);
@@ -553,4 +610,3 @@ function SimulationApp({ initialSession, onSwitch }: { initialSession: any; onSw
     </div>
   );
 }
-

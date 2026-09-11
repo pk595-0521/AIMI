@@ -42,7 +42,18 @@ export const TrackSelectionView: React.FC<TrackSelectionViewProps> = ({ onSelect
         </div>
 
         {/* 4 Track Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {tracks.length === 0 ? (
+          <div className="mx-auto max-w-2xl rounded-xl border border-[#EBEBEB] bg-white p-8 text-center shadow-xs">
+            <Building className="mx-auto h-6 w-6" />
+            <h2 className="mt-4 text-xl font-medium">Your candidate workspace is ready</h2>
+            <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-[#666]">
+              No assessment track has been assigned to this account yet. An AIMI administrator can assign a role simulation, after which it will appear here.
+            </p>
+            <a href="/" className="mt-6 inline-flex items-center gap-2 rounded-full border border-[#1A1A1A] px-4 py-2 text-xs font-medium hover:bg-[#FAFAFA]">
+              Return home <ArrowRight className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        ) : <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {tracks.map((track) => {
             const icon =
               track.id === 'consulting' ? (
@@ -126,7 +137,7 @@ export const TrackSelectionView: React.FC<TrackSelectionViewProps> = ({ onSelect
               </div>
             );
           })}
-        </div>
+        </div>}
       </div>
 
       {/* Footer */}

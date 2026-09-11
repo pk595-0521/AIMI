@@ -4,6 +4,21 @@ import type { User } from '@prisma/client';
 import { db } from './db';
 export interface AuthRequest extends Request { user: User }
 let jwks: ReturnType<typeof createRemoteJWKSet>;
+const SELF_SERVICE_ORGANIZATION_ID = '00000000-0000-0000-0000-000000000001';
+
+async function provisionSupabaseUser(subject: string, email: string) {
+  const organization = await db.organization.upsert({
+    where: { id: SELF_SERVICE_ORGANIZATION_ID },
+    update: {},
+    create: { id: SELF_SERVICE_ORGANIZATION_ID, name: 'AIMI self-service candidates' },
+  });
+  return db.user.upsert({
+    where: { subject },
+    update: { email, disabled: false },
+    create: { subject, email, organizationId: organization.id, role: 'APPLICANT' },
+  });
+}
+
 export async function authenticate(req: Request, res: Response, next: NextFunction) {
   try {
     if (!process.env.AUTH_JWKS_URL || !process.env.AUTH_ISSUER || !process.env.AUTH_AUDIENCE) {
@@ -12,13 +27,24 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     // A trusted OIDC gateway sets this Secure, HttpOnly, SameSite=Strict cookie.
     const cookie = req.headers.cookie?.split(';').map(s => s.trim()).find(s => s.startsWith('__Host-aimi_token='))?.slice('__Host-aimi_token='.length);
     const token = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : cookie;
-    if (!token) { res.status(401).json({ error: 'Sign in through your organization to continue' }); return; }
+    if (!token) { res.status(401).json({ error: 'Sign in to continue' }); return; }
     jwks ??= createRemoteJWKSet(new URL(process.env.AUTH_JWKS_URL));
     const { payload } = await jwtVerify(token, jwks, {
       issuer: process.env.AUTH_ISSUER, audience: process.env.AUTH_AUDIENCE, algorithms: ['RS256', 'ES256'],
     });
     if (!payload.sub || !payload.exp) throw new Error('Missing claims');
-    const user = await db.user.findUnique({ where: { subject: payload.sub } });
+    let user = await db.user.findUnique({ where: { subject: payload.sub } });
+    // Supabase Auth access tokens use the configured issuer and the
+    // `authenticated` audience. Provisioning happens on the first API call
+    // so a simple email/password signup can enter the candidate workspace
+    // without a separate organization administrator workflow.
+    const isSupabaseToken = payload.iss === process.env.AUTH_ISSUER && payload.aud === 'authenticated';
+    if (!user && isSupabaseToken) {
+      const email = typeof payload.email === 'string' && payload.email.includes('@')
+        ? payload.email.toLowerCase()
+        : `${payload.sub}@users.invalid`;
+      user = await provisionSupabaseUser(payload.sub, email);
+    }
     if (!user || user.disabled) { res.status(403).json({ error: 'Account is not provisioned' }); return; }
     (req as AuthRequest).user = user; next();
   } catch { res.status(401).json({ error: 'Invalid or expired sign-in' }); }
