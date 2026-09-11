@@ -14,9 +14,9 @@ try{
 const landing=await browser.newPage({viewport:{width:1440,height:1000}});
 await landing.goto(base);
 await landing.getByRole('link',{name:'Get Started / Sign Up',exact:true}).waitFor();
-await landing.getByRole('link',{name:'Sign In',exact:true}).waitFor();
-await landing.getByRole('link',{name:'Access Grader Portal',exact:true}).waitFor();
-await landing.getByRole('link',{name:'Employer / Admin Portal',exact:true}).waitFor();
+await landing.getByRole('navigation').getByRole('link',{name:'Sign In',exact:true}).waitFor();
+await landing.getByRole('link',{name:/^Access Grader Portal/}).waitFor();
+await landing.getByRole('link',{name:/^Employer \/ Admin Portal/}).waitFor();
 await landing.goto(base+'/auth/signup');
 await landing.getByRole('heading',{name:'Create your account'}).waitFor();
 await landing.getByLabel('Full Name').waitFor();
@@ -63,7 +63,7 @@ for(const track of TRACK_LIST){
 }
 const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>{if(e.message!=='WebSocket closed without opened.')errors.push(e.message)});record.status='SUBMITTED';record.evaluation={revision:0,scores:{},rubricVersion:'test-v2'};record.evidence=evaluationEvidence(record);record.advisory=automatedAdvisory(record);
 await page.route('**/api/**',async route=>{const path=new URL(route.request().url()).pathname;let data:any={};if(path==='/api/me')data={role:'GRADER',certifiedGrader:true};else if(path==='/api/grader/sessions')data=[{id:record.id,trackId:record.trackId,status:record.status,applicant:{email:'candidate@test.invalid'}}];else if(path.endsWith('/artifacts'))data=[];else if(path.endsWith('/prompts'))data={rows:[],nextCursor:null};else data=record;await route.fulfill({json:data});});
-await page.goto(base+'/grader');await page.getByLabel('Assigned assessment').selectOption(record.id);await page.getByRole('heading',{name:'Observable signals'}).waitFor();await page.getByRole('button',{name:'Strong / Mid / Weak'}).first().click();await page.getByRole('dialog').waitFor();await page.screenshot({path:'tests/artifacts/grader-anchor.png',fullPage:true});await page.keyboard.press('Escape');
+await page.goto(base+'/demo/grader');await page.getByLabel('Assigned assessment').selectOption(record.id);await page.getByRole('heading',{name:'Observable signals'}).waitFor();await page.getByRole('button',{name:'Strong / Mid / Weak'}).first().click();await page.getByRole('dialog').waitFor();await page.screenshot({path:'tests/artifacts/grader-anchor.png',fullPage:true});await page.keyboard.press('Escape');
 await page.getByRole('button',{name:'Final recommendation',exact:true}).click();await page.screenshot({path:'tests/artifacts/grader-desktop.png',fullPage:true});
 await page.getByRole('button',{name:'Quantitative checks',exact:true}).click();await page.getByRole('heading',{name:'Candidate inputs vs. scenario baseline'}).waitFor();await page.getByRole('button',{name:'Shock adaptation',exact:true}).click();await page.getByRole('heading',{name:'Before and after the scenario update'}).waitFor();
 assert.deepEqual(errors,[]);console.log('PASS grader split view, anchors, final structure, quantitative comparison and shock evidence; no browser runtime errors');
