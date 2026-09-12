@@ -47,5 +47,10 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     }
     if (!user || user.disabled) { res.status(403).json({ error: 'Account is not provisioned' }); return; }
     (req as AuthRequest).user = user; next();
-  } catch { res.status(401).json({ error: 'Invalid or expired sign-in' }); }
+  } catch (error) {
+    // Log only the error class/code, never credentials or token contents.
+    const failure = error as { name?: string; code?: string };
+    console.error('Authentication failure', failure.code || failure.name || 'unknown');
+    res.status(401).json({ error: 'Invalid or expired sign-in' });
+  }
 }
