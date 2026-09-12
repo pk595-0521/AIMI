@@ -1,3 +1,4 @@
+import {copilot} from './copilot';
 import {validateArtifact} from './artifacts';
 import { raw, Router, type Request, type Response, type NextFunction } from 'express';
 import { z, ZodError } from 'zod';
@@ -29,6 +30,7 @@ api.use((req: AuthRequest, res, next) => {
 api.use(rateLimit({ windowMs: 60000, limit: 180, keyGenerator: req => (req as AuthRequest).user.id, standardHeaders: 'draft-8', legacyHeaders: false }));
 api.get('/me', handler(async (req,res) => res.json({ role: req.user.role, certifiedGrader: req.user.certifiedGrader, policy, governanceReady: governanceReady(), enrollmentReady: enrollmentReady() })));
 api.use(assignments);
+api.use(copilot);
 api.get('/tracks', handler(async (req,res) => {
   if (!canAccessPortal(req.user.role, 'assessment')) throw new HttpError(403, 'Candidate access required');
   const assigned = await db.assessmentSession.findMany({ where: { applicantId: req.user.id, organizationId: req.user.organizationId }, distinct: ['trackId'] });

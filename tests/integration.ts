@@ -18,6 +18,8 @@ try{
  process.env.DATABASE_URL=`postgresql://aimi_test:local-test-only@127.0.0.1:${port}/aimi_test`;
  const client=pg.getPgClient('aimi_test');await client.connect();
  for(const migration of ['202609100001_initial','202609100002_revised_design'])await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`,'utf8'));
+ await client.query('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role');
+ await client.query(await readFile('supabase/migrations/20260912213026_copilot_audit_logs_view.sql','utf8'));
  await client.query('CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text)');await client.end();
  db=(await import('../server/db')).db;
  const {privateKey,publicKey}=await generateKeyPair('RS256');const jwk={...await exportJWK(publicKey),kid:'local-test',alg:'RS256',use:'sig'};
@@ -45,6 +47,7 @@ try{
  await call(employer,`/admin/graders/${trainee.id}/certify`,{confirmed:true});
  assert.equal((await db.user.findUniqueOrThrow({where:{id:trainee.id}})).certifiedGrader,true);
  for(const t of TRACK_LIST){
+  (await import('../server/copilot')).copilotLimit.resetKey(applicant.id);
   const registry=await db.assessmentTrack.findUniqueOrThrow({where:{id:t.id+'-v2'}});assert.deepEqual(stableJson(registry.scenario),stableJson(t));
   const practice=await call(applicant,'/practice',{trackId:registry.id},201);
   assert.equal((await call(applicant,'/practice',{trackId:registry.id},201)).sessionId,practice.sessionId);
@@ -78,6 +81,23 @@ try{
   const reloadedGate=await call(applicant,'/assessment?trackId='+registry.id);assert.deepEqual(reloadedGate.raw_hygiene_score,s.raw_hygiene_score);assert.equal(reloadedGate.hygiene_multiplier,s.hygiene_multiplier);
   await call(applicant,'/prompt/log',{sessionId:s.id,requestId:crypto.randomUUID(),prompt:'Send to person@example.test',loggedPurpose:'Test blocked sensitive data',privateDataShared:false,aiVerificationEnabled:true},422);
   assert.equal(await db.promptLog.count({where:{sessionId:s.id}}),0);
+  const chatBody={assessment_id:s.id,track_id:t.id,segment_id:1,request_id:crypto.randomUUID(),purpose:'Local streaming verification',messages:[{role:'user',content:'Compare the case metrics.'}],current_shock_state:{injected:'DO NOT TRUST'}};
+  await call(applicant,'/copilot/chat',{...chatBody,segment_id:5},409);
+  await call(outsider,'/copilot/chat',chatBody,404);
+  await call(applicant,'/copilot/chat',chatBody,503);
+  const originalFetch=globalThis.fetch;process.env.GROQ_API_KEY='isolated-test-key';
+  globalThis.fetch=(async(url:any,options:any)=>{
+   if(String(url).startsWith('https://api.groq.com/')){const body=JSON.parse(options.body);assert.ok(body.messages[0].content.includes(t.companyName));assert.ok(!body.messages[0].content.includes('DO NOT TRUST'));return new Response('data: {"choices":[{"delta":{"content":"Case-grounded answer"}}]}\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}});}
+   return originalFetch(url,options);
+  }) as typeof fetch;
+  try{const stream=await call(applicant,'/copilot/chat',chatBody);assert.ok(stream.toString().includes('Case-grounded answer'));assert.ok(stream.toString().includes('"type":"done"'));
+   // Completion auditing happens after the response ends.
+   let audit;for(let n=0;n<30;n++){audit=await db.promptLog.findFirst({where:{sessionId:s.id,requestId:chatBody.request_id}});if(audit?.status==='COMPLETE')break;await new Promise(r=>setTimeout(r,20));}
+   assert.equal(audit.status,'COMPLETE');assert.equal(audit.response,'Case-grounded answer');assert.equal(audit.model,'llama-3.3-70b-versatile');
+   const mapped=await db.$queryRawUnsafe('SELECT candidate_id,prompt_text,response_text FROM public.copilot_audit_logs WHERE id=$1::uuid',audit.id);assert.equal(mapped[0].candidate_id,applicant.id);assert.equal(mapped[0].response_text,audit.response);
+   await call(applicant,'/copilot/chat',chatBody,409);
+  }finally{globalThis.fetch=originalFetch;delete process.env.GROQ_API_KEY;}
+
   const file=await call(applicant,`/assessment/${s.id}/artifacts`,Buffer.from('%PDF-1.7\nfixture'),201,{'Content-Type':'application/octet-stream','X-File-Name':'fixture.pdf'});
   const downloaded=await call(grader,`/assessment/${s.id}/artifacts/${file.id}`);assert.equal(downloaded.toString(),'%PDF-1.7\nfixture');
   await call(outsider,`/assessment/${s.id}/artifacts/${file.id}`,undefined,404);

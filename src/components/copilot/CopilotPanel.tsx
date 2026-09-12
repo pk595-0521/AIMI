@@ -1,3 +1,4 @@
+import {Markdown} from '../revised/Primitives';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Sparkles,
@@ -43,6 +44,8 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [streamingText,setStreamingText]=useState('');
+  const [chatError,setChatError]=useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatMessages =
@@ -78,7 +81,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
     };
     onSendMessage(userMessage);
     setInputPrompt('');
-    setIsLoading(true);
+    setIsLoading(true);setStreamingText('');setChatError('');
 
     try {
       const reply = await queryCopilot({
@@ -90,7 +93,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
         loggedPurpose: meta.purpose,
         privateDataShared: meta.privateDataShared,
         aiVerificationEnabled: meta.aiVerificationEnabled,
-      });
+      },setStreamingText);
 
       const assistantMessage: ChatMessage = {
         id: reply.logId+'-response',
@@ -100,6 +103,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
       };
       onSendMessage(assistantMessage);
     } catch (err) {
+      setChatError(err instanceof Error?err.message:'Copilot is unavailable.');
       const errorMessage: ChatMessage = {
         id: `err_${Date.now()}`,
         sender: 'system',
@@ -108,7 +112,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
       };
       onSendMessage(errorMessage);
     } finally {
-      setIsLoading(false);
+      setIsLoading(false);setStreamingText('');
     }
   };
 
@@ -186,7 +190,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
                     key={msg.id}
                     className="p-2.5 rounded-lg bg-[#FAFAFA] border border-[#EBEBEB] text-[#1A1A1A] text-[11px] font-mono"
                   >
-                    {msg.content}
+                    {isUser?msg.content:<Markdown text={msg.content}/>}
                   </div>
                 );
               }
@@ -221,7 +225,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
                     }`}
                   >
                     <div className="whitespace-pre-line font-sans text-xs font-light">
-                      {msg.content}
+                      {isUser?msg.content:<Markdown text={msg.content}/>}
                     </div>
 
                     {msg.promptLogged && (
@@ -243,6 +247,8 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
               );
             })}
 
+            {chatError&&<p role="alert" className="work-warning">{chatError}</p>}
+            {streamingText&&<div aria-live="polite" className="p-3 text-xs"><Markdown text={streamingText}/></div>}
             {isLoading && (
               <div className="flex items-center space-x-2 text-[#777] text-xs py-2">
                 <Sparkles className="w-3.5 h-3.5 text-[#1A1A1A] animate-spin" />

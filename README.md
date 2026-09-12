@@ -56,3 +56,13 @@ finalization. The existing provider-contract consent gate still applies.
 ACTIVE with consent as `in_progress`; SUBMITTED and EXPIRED remain explicit.
 The protected Express API supplies UI data using server-side tenant predicates;
 raw assessment tables are not exposed to browser Supabase queries.
+
+### Groq streaming Copilot
+
+Set the server-only `GROQ_API_KEY` in Render. Candidate Copilot uses Groq's OpenAI-compatible chat completions endpoint, `llama-3.3-70b-versatile`, temperature 0.2, and SSE. The key is never sent to the browser. Grader model advisory remains separately configured.
+
+`POST /api/copilot/chat` accepts `assessment_id`, `track_id`, `segment_id`, `request_id`, `messages`, `purpose`, optional `candidate_id` and `current_shock_state`. The authenticated owner, assigned scenario snapshot, active segment and server-released shock determine context. Browser shock flags and unverified conversation history are ignored. Only submitted hygiene decisions are required; incorrect classifications never authorize sensitive data disclosure.
+
+Audit responses are stored in the existing `PromptLog` table and exposed through the service-only `copilot_audit_logs` view (migration `20260912213026_copilot_audit_logs_view.sql`). This preserves existing grader history and AI verification references without maintaining duplicate audit stores. Completion audit failures are logged server-side and do not truncate the stream. Provider failures and disconnects record partial responses as failed where storage is available.
+
+Consent version `2026-09-12.2` describes Groq transmission and potential abuse-monitoring retention. Groq's published service terms prohibit model training absent customer permission; enable zero data retention in the Groq console if required by your organization. Missing keys produce a friendly configuration error; rate limits produce a retry message. No simulated answer is returned.
