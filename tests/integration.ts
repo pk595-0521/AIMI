@@ -54,7 +54,18 @@ try{
   const assigned=await db.assessmentSession.findUniqueOrThrow({where:{id:assignment.sessionId}});
   assert.deepEqual(stableJson(assigned.scenarioSnapshot),stableJson(t));assert.deepEqual(stableJson(assigned.rubricSnapshot),stableJson(t.rubric));
   let s=await call(applicant,'/assessment?trackId='+registry.id);assert.equal(s.consented,false);assert.equal(s.track,undefined);
+  process.env.AI_ZERO_TRAINING_VERIFIED='false';process.env.NEXT_PUBLIC_BETA_MODE='false';
+  const consentBody={sessionId:assigned.id,policyVersion:policy.version,monitoringAccepted:true,zeroRetrainingAccepted:true,humanReviewAccepted:true};
+  await call(applicant,'/legal/consent',consentBody,503);
+  process.env.NEXT_PUBLIC_BETA_MODE='true';
+  const betaIdentity=await call(applicant,'/me');assert.equal(betaIdentity.enrollmentReady,true);assert.equal(betaIdentity.governanceReady,false);
+  await call(applicant,'/legal/consent',{...consentBody,humanReviewAccepted:false},422);
   await call(applicant,'/legal/consent',{sessionId:assigned.id,policyVersion:policy.version,monitoringAccepted:true,zeroRetrainingAccepted:true,humanReviewAccepted:true},201);
+  const started=await db.assessmentSession.findUniqueOrThrow({where:{id:assigned.id}});assert.ok(started.phaseDeadlineAt.getTime()>Date.now());
+  await call(applicant,'/legal/consent',consentBody,201);
+  assert.equal((await db.assessmentSession.findUniqueOrThrow({where:{id:assigned.id}})).phaseDeadlineAt.getTime(),started.phaseDeadlineAt.getTime());
+  assert.ok((await call(grader,'/grader/sessions')).some((row:any)=>row.id===assigned.id&&row.queueStatus==='in_progress'));
+  process.env.AI_ZERO_TRAINING_VERIFIED='true';
   s=await call(applicant,'/assessment?trackId='+registry.id);assert.equal(s.phase,1);
   const cmd=async(action:string,extra:any={},expected=200)=>{const r=await call(applicant,'/assessment/sync',{sessionId:s.id,revision:s.revision,action,...extra},expected);if(expected===200)s=r;return r;};
   await call(outsider,'/assessment/sync',{sessionId:s.id,revision:0,action:'save'},404);

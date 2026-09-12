@@ -6,7 +6,7 @@ import { GoogleGenAI } from '@google/genai';
 import { Prisma } from '@prisma/client';
 import { db } from './db';
 import { authenticate, type AuthRequest } from './auth';
-import { policy, policyDigest, governanceReady } from './policy';
+import { policy, policyDigest, governanceReady, enrollmentReady } from './policy';
 import { ownedSession, requireConsent, assertActive, publicSession, syncAssessment, json } from './assessment';
 import { HttpError } from './validation';
 import {unsafePrompt,sanitizedContext} from './governance';
@@ -27,7 +27,7 @@ api.use((req: AuthRequest, res, next) => {
   res.setHeader('Cache-Control', 'no-store'); next();
 });
 api.use(rateLimit({ windowMs: 60000, limit: 180, keyGenerator: req => (req as AuthRequest).user.id, standardHeaders: 'draft-8', legacyHeaders: false }));
-api.get('/me', handler(async (req,res) => res.json({ role: req.user.role, certifiedGrader: req.user.certifiedGrader, policy, governanceReady: governanceReady() })));
+api.get('/me', handler(async (req,res) => res.json({ role: req.user.role, certifiedGrader: req.user.certifiedGrader, policy, governanceReady: governanceReady(), enrollmentReady: enrollmentReady() })));
 api.use(assignments);
 api.get('/tracks', handler(async (req,res) => {
   if (!canAccessPortal(req.user.role, 'assessment')) throw new HttpError(403, 'Candidate access required');
@@ -52,7 +52,7 @@ api.get('/assessment', handler(async (req,res) => {
 }));
 api.post('/legal/consent', handler(async (req,res) => {
   const input = z.object({ sessionId: z.string().uuid(), policyVersion: z.literal(policy.version), monitoringAccepted: z.literal(true), zeroRetrainingAccepted: z.literal(true), humanReviewAccepted: z.literal(true) }).strict().parse(req.body);
-  if (!governanceReady()) throw new HttpError(503, 'The assessment administrator must verify the enterprise data contract before enrollment');
+  if (!enrollmentReady()) throw new HttpError(503, 'The assessment administrator must verify the enterprise data contract before enrollment');
   await db.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "AssessmentSession" WHERE id = ${input.sessionId}::uuid FOR UPDATE`;
     const s = await ownedSession(tx,input.sessionId,req.user);

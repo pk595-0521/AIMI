@@ -11,7 +11,9 @@ Install Node 22+, pnpm and PostgreSQL. Run `pnpm install`, `pnpm db:generate`, `
 
 The server applies Prisma's `pgbouncer=true` compatibility setting to Supabase transaction pooler URLs on port 6543. Direct connections and session pooler connections retain their normal behavior. Database failures during identity lookup return a retryable 503 instead of incorrectly reporting an expired sign-in.
 
-For an explicitly authorized live workflow probe, run `LIVE_SMOKE_ALLOW_WRITES=true node .live-assignment-smoke.mjs`. It creates disposable users prefixed `aimi-assignment-smoke-` and real assessment sessions; remove those exact test records after verification. The printed temporary directory holds private browser sessions for resuming with `SMOKE_STATE_DIR` and must be removed after cleanup. The probe reports the existing enterprise-contract enrollment gate rather than bypassing it.
+For an explicitly authorized live workflow probe, run `LIVE_SMOKE_ALLOW_WRITES=true node .live-assignment-smoke.mjs`. It creates disposable users prefixed `aimi-assignment-smoke-` and real assessment sessions; remove those exact test records after verification. The printed temporary directory holds private browser sessions for resuming with `SMOKE_STATE_DIR` and must be removed after cleanup. The probe verifies all three consent acknowledgments, Segment 1, the timer, and the in-progress grader queue.
+
+Beta enrollment is enabled by default in this release (`NEXT_PUBLIC_BETA_MODE=true`). Candidates may start after all three consent acknowledgments even while the enterprise AI contract is pending. Set `NEXT_PUBLIC_BETA_MODE=false` to restore that enrollment prerequisite. Outbound Copilot and AI-assisted grading still require `AI_ZERO_TRAINING_VERIFIED=true` and `AI_CONTRACT_REFERENCE`; beta enrollment does not attest a contract or grant any additional portal permissions.
 
 `pnpm dev` runs the app. `pnpm lint`, `pnpm test`, and `pnpm build` validate it. `pnpm start` runs the production build. The root landing page is public, while assessment and portal APIs require a Supabase or trusted OIDC session. There is no insecure local-login or simulated-provider fallback.
 
