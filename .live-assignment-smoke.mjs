@@ -44,7 +44,7 @@ assert.equal(await candidate.getByPlaceholder('Ask Copilot for analysis, formula
 const gate=(await api(candidate,'/assessment?trackId=consulting-v2')).data;
 assert.ok(gate.dataHandling);assert.ok(gate.hygiene_multiplier<1);assert.ok(gate.raw_hygiene_score.total>0);
 assert.equal((await api(candidate,'/assessment/sync',{sessionId:gate.id,revision:gate.revision,action:'data-handling',dataHandling:gate.dataHandling})).status,409);
-await candidate.reload();await candidate.getByPlaceholder('Ask Copilot for analysis, formulas, or risk frameworks…').waitFor();
+await candidate.reload();await candidate.getByRole('button',{name:'Start Assessment'}).first().click();await candidate.getByPlaceholder('Ask Copilot for analysis, formulas, or risk frameworks…').waitFor();
 assert.equal(await candidate.getByPlaceholder('Ask Copilot for analysis, formulas, or risk frameworks…').isEnabled(),true);
 console.log('PASS live incorrect first attempt unlocks Copilot, persists score and rejects retry');
 
