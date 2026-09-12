@@ -51,6 +51,9 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     // Log only the error class/code, never credentials or token contents.
     const failure = error as { name?: string; code?: string };
     console.error('Authentication failure', failure.code || failure.name || 'unknown');
+    if (failure.name?.startsWith('PrismaClient')) {
+      res.status(503).json({ error: 'Sign-in verification is temporarily unavailable. Please retry.' }); return;
+    }
     res.status(401).json({ error: 'Invalid or expired sign-in' });
   }
 }

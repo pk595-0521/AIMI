@@ -9,6 +9,10 @@ A four-track workplace assessment with server-enforced phase gates, PostgreSQL p
 
 Install Node 22+, pnpm and PostgreSQL. Run `pnpm install`, `pnpm db:generate`, `pnpm db:migrate`, and `pnpm db:seed` with DATABASE_URL configured. For hosted account access, configure the Supabase URL/publishable key and apply the auth profile migration. The four bundled revised tracks are enabled for beta assignment automatically at server startup. Their existing provisional rubric weights are preserved; beta activation does not represent hiring calibration.
 
+The server applies Prisma's `pgbouncer=true` compatibility setting to Supabase transaction pooler URLs on port 6543. Direct connections and session pooler connections retain their normal behavior. Database failures during identity lookup return a retryable 503 instead of incorrectly reporting an expired sign-in.
+
+For an explicitly authorized live workflow probe, run `LIVE_SMOKE_ALLOW_WRITES=true node .live-assignment-smoke.mjs`. It creates disposable users prefixed `aimi-assignment-smoke-` and real assessment sessions; remove those exact test records after verification. The printed temporary directory holds private browser sessions for resuming with `SMOKE_STATE_DIR` and must be removed after cleanup. The probe reports the existing enterprise-contract enrollment gate rather than bypassing it.
+
 `pnpm dev` runs the app. `pnpm lint`, `pnpm test`, and `pnpm build` validate it. `pnpm start` runs the production build. The root landing page is public, while assessment and portal APIs require a Supabase or trusted OIDC session. There is no insecure local-login or simulated-provider fallback.
 
 For the UI fixture smoke test, start the app and run `pnpm exec playwright install chromium`, then `pnpm test:browser`. Alternatively set BROWSER_EXECUTABLE to a compatible installed Chromium executable. TEST_BASE_URL defaults to http://127.0.0.1:3000. The browser test uses isolated mocked API responses; it does not replace live database, identity-provider or provider integration testing.
