@@ -1,3 +1,4 @@
+import {scoreRubric} from '../server/workflow';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -72,8 +73,9 @@ try{
   await cmd('advance',{},422);
   const decisions=t.dataGate!.fields.map(f=>({fieldName:f.fieldName,action:f.expectedAction[0],rationale:'Use the minimum necessary safe data.'}));
   const unsafe=decisions.map((d,i)=>i===decisions.length-1?{...d,action:'use-as-is'}:d);
-  await cmd('data-handling',{dataHandling:unsafe});assert.ok(s.gateError);assert.equal(s.hygieneEvents.length,1);assert.equal(s.dataHandling,null);
-  await cmd('data-handling',{dataHandling:decisions});assert.ok(s.dataHandling);
+  await cmd('data-handling',{dataHandling:unsafe});assert.equal(s.gateError,undefined);assert.equal(s.hygieneEvents.length,1);assert.deepEqual(s.dataHandling,unsafe);assert.ok(s.hygiene_multiplier<1);
+  await cmd('data-handling',{dataHandling:decisions},409);assert.ok(s.dataHandling);
+  const reloadedGate=await call(applicant,'/assessment?trackId='+registry.id);assert.deepEqual(reloadedGate.raw_hygiene_score,s.raw_hygiene_score);assert.equal(reloadedGate.hygiene_multiplier,s.hygiene_multiplier);
   await call(applicant,'/prompt/log',{sessionId:s.id,requestId:crypto.randomUUID(),prompt:'Send to person@example.test',loggedPurpose:'Test blocked sensitive data',privateDataShared:false,aiVerificationEnabled:true},422);
   assert.equal(await db.promptLog.count({where:{sessionId:s.id}}),0);
   const file=await call(applicant,`/assessment/${s.id}/artifacts`,Buffer.from('%PDF-1.7\nfixture'),201,{'Content-Type':'application/octet-stream','X-File-Name':'fixture.pdf'});
@@ -99,7 +101,7 @@ try{
   const review=await call(grader,`/grader/${s.id}`);assert.ok(review.evidence.delta.length);assert.equal(review.evidence.signals.find((x:any)=>x.id==='structure').status,'observed');
   const advisory=await call(grader,`/grader/${s.id}/advisory`,{});assert.ok(advisory.advisory.totalPenalty>0);
   const evaluation={revision:advisory.evaluation.revision,scores:Object.fromEntries(t.rubric.map(c=>[c.id,{score:3,notes:'Fixture: specified evidence in segment 2 and shock checkpoint'}])),feedback:'Structured response and acknowledged limitations.',humanDecision:'Human-reviewed evaluation; this is a test fixture.',planningCapApplied:false,finalize:true};
-  const result=await call(grader,`/grader/${s.id}/evaluation`,evaluation);assert.equal(result.overallScore,60);
+  const result=await call(grader,`/grader/${s.id}/evaluation`,evaluation);assert.equal(result.overallScore,scoreRubric(t.rubric,evaluation.scores,false,s.hygiene_multiplier));assert.ok(result.overallScore<60);
   await call(grader,`/grader/${s.id}/evaluation`,evaluation,409);
   const report=await call(employer,`/employer/${s.id}/report`);assert.equal(report.evaluations.length,1);assert.equal(report.work.final.confidence,'medium');assert.ok(report.hygieneEvents.some((e:any)=>e.type==='BLOCKED_PII'));
   lastSession=s;console.log(`PASS ${t.id}: consent, gates, persistence, all segments, shock, attachments, tenant isolation, snapshots and final human report`);

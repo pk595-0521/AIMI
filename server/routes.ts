@@ -11,7 +11,7 @@ import { ownedSession, requireConsent, assertActive, publicSession, syncAssessme
 import { HttpError } from './validation';
 import {unsafePrompt,sanitizedContext} from './governance';
 import {automatedAdvisory,evaluationEvidence,graderPrompt} from './evaluation';
-import { scoreRubric } from './workflow';
+import { scoreRubric, sessionHygiene } from './workflow';
 import type { TrackConfig } from '../src/types';
 import { betaSignup } from './beta-signup';
 import { canAccessPortal } from '../src/auth-roles';
@@ -122,7 +122,7 @@ api.get('/grader/sessions', handler(async (req,res) => {
 }));
 api.get('/grader/:sessionId', handler(async (req,res) => {
   const id = z.string().uuid().parse(req.params.sessionId); const s = await reviewAccess(req,id);
-  res.json({ ...s, evidence:evaluationEvidence(s), advisory:automatedAdvisory(s), evaluation: req.user.role==='GRADER' ? await db.evaluation.findUnique({ where: { sessionId_graderId: { sessionId: id, graderId: req.user.id } } }) : await db.evaluation.findFirst({where:{sessionId:id,finalizedAt:{not:null}},orderBy:{updatedAt:'desc'}}) });
+  res.json({ ...s, ...sessionHygiene(s), evidence:evaluationEvidence(s), advisory:automatedAdvisory(s), evaluation: req.user.role==='GRADER' ? await db.evaluation.findUnique({ where: { sessionId_graderId: { sessionId: id, graderId: req.user.id } } }) : await db.evaluation.findFirst({where:{sessionId:id,finalizedAt:{not:null}},orderBy:{updatedAt:'desc'}}) });
 }));
 api.get('/grader/:sessionId/prompts', handler(async (req,res) => {
   const id = z.string().uuid().parse(req.params.sessionId); await reviewAccess(req,id);
@@ -139,7 +139,7 @@ api.post('/grader/:sessionId/evaluation', handler(async (req,res) => {
     const s = await tx.assessmentSession.findUniqueOrThrow({ where: { id } });
     if (s.status === 'ACTIVE') throw new HttpError(409,'Wait until the assessment is submitted');
     const criteria = s.rubricSnapshot as any[];
-    const total = scoreRubric(criteria,input.scores,input.planningCapApplied && s.scenarioVersion===1 && s.trackId === 'product-management');
+    const total = scoreRubric(criteria,input.scores,input.planningCapApplied && s.scenarioVersion===1 && s.trackId === 'product-management',sessionHygiene(s).hygiene_multiplier);
     const result = await tx.evaluation.updateMany({ where: { sessionId: id, graderId: req.user.id, revision: input.revision, finalizedAt: null }, data: { scores: json(input.scores), feedback: input.feedback, planningCapApplied: input.planningCapApplied, humanDecision: input.humanDecision, overallScore: total, revision: { increment: 1 }, finalizedAt: input.finalize ? new Date() : null } });
     if (result.count !== 1) throw new HttpError(409,'Evaluation changed or was finalized');
     return { overallScore: total, revision: input.revision + 1 };
@@ -180,7 +180,7 @@ api.post('/grader/:sessionId/advisory',handler(async(req,res)=>{
   const parsed=z.object({criteria:z.array(z.object({id:z.string(),score:z.number().int().nonnegative(),evidenceRefs:z.array(z.string()).min(1),reason:z.string().min(1)})),uncertainties:z.array(z.string())}).parse(JSON.parse(output.text||'{}'));
   const criteria=s.rubricSnapshot as any[];
   if(parsed.criteria.length!==criteria.length||new Set(parsed.criteria.map(c=>c.id)).size!==criteria.length||parsed.criteria.some(c=>!criteria.some(r=>r.id===c.id&&c.score<=r.maxScore)))throw new HttpError(502,'Grading provider returned an invalid rubric');
-  const rawScore=scoreRubric(criteria,Object.fromEntries(parsed.criteria.map(c=>[c.id,{score:c.score,notes:c.reason}])),false);
+  const rawScore=scoreRubric(criteria,Object.fromEntries(parsed.criteria.map(c=>[c.id,{score:c.score,notes:c.reason}])),false,sessionHygiene(s).hygiene_multiplier);
   modelReview={...parsed,model:process.env.GEMINI_MODEL,rawScore,adjustedScore:Math.max(0,rawScore-rules.totalPenalty)};
  }
  const advisory={...rules,modelReview};
@@ -192,7 +192,7 @@ api.get('/employer/:sessionId/report',handler(async(req,res)=>{
  if(!['EMPLOYER_ADMIN','SYSTEM_ADMIN','GRADER'].includes(req.user.role))throw new HttpError(403,'Report access required');
  const prompts=await db.promptLog.findMany({where:{sessionId:id},orderBy:{createdAt:'asc'}});
  const evaluations=await db.evaluation.findMany({where:{sessionId:id,finalizedAt:{not:null}}});
- res.json({generatedAt:new Date().toISOString(),sessionId:id,track:s.trackId,status:s.status,work:s.work,deliverables:s.drafts,dataHandling:s.dataHandling,hygieneEvents:s.hygieneEvents,prompts,checkpoints:s.checkpoints,evidence:evaluationEvidence(s),evaluations});
+ res.json({generatedAt:new Date().toISOString(),sessionId:id,track:s.trackId,status:s.status,...sessionHygiene(s),work:s.work,deliverables:s.drafts,dataHandling:s.dataHandling,hygieneEvents:s.hygieneEvents,prompts,checkpoints:s.checkpoints,evidence:evaluationEvidence(s),evaluations});
 }));
 
 api.use((_req,res) => res.status(404).json({ error: 'API route not found' }));

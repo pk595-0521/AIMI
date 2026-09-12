@@ -1,5 +1,5 @@
 import type {TrackConfig} from '../src/types';
-import {checkDataHandling} from './workflow';
+import {scoreHygiene} from './workflow';
 export function unsafePrompt(text:string,t:TrackConfig):string[] {
  const reasons:string[]=[];
  if(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text))reasons.push('email address');
@@ -10,7 +10,9 @@ export function unsafePrompt(text:string,t:TrackConfig):string[] {
  return [...new Set(reasons)];
 }
 export function sanitizedContext(t:TrackConfig,phase:number,decisions:any[]) {
- checkDataHandling(t,decisions);
+ if(t.dataGate)scoreHygiene(t,decisions);
+ // Incorrect classifications affect scoring, never permission to disclose data.
+ decisions=decisions.map(d=>({...d,action:t.dataGate?.fields.find(f=>f.fieldName===d.fieldName)?.expectedAction.includes(d.action)?d.action:'exclude'}));
  const exhibits=t.exhibits.filter(e=>!e.graderOnly&&(e.releaseSegment||1)<=phase).map(e=>{
   if(e.type!=='dataset')return {id:e.id,title:e.title,content:e.content};
   const rows=(e.tableRows||[]).map(row=>Object.fromEntries((t.dataGate?.fields||[]).flatMap(f=>{

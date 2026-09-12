@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { db } from './db';
 import { HttpError, syncSchema } from './validation';
-import { assertTransition, checkDataHandling } from './workflow';
+import { assertTransition, scoreHygiene, sessionHygiene } from './workflow';
 import {assertRevisedTransition,assertWorkIdentity,workOf} from './revised-workflow';
 import { policy } from './policy';
 import type { TrackConfig } from '../src/types';
@@ -23,7 +23,7 @@ export function assertActive(s: any) {
 export function publicSession(s: any) {
   const t = s.scenarioSnapshot as unknown as TrackConfig;
   return {
-    id: s.id, trackId: s.trackId, revision: s.revision, phase: s.activePhase,
+    id: s.id, trackId: s.trackId, revision: s.revision, phase: s.activePhase, ...sessionHygiene(s),
     deadline: s.phaseDeadlineAt.toISOString(), status: s.status,
     drafts: s.drafts, nodes: s.nodes.map((n: any) => ({ ...n, id: n.key, phaseId: n.phase, position: { x: n.positionX, y: n.positionY }, owner:n.owner||'',dependencies:n.dependencies||'',targetMilestone:n.targetMilestone||'',triggerThreshold:n.triggerThreshold||'' })),
     work: workOf(s), hygieneEvents: s.hygieneEvents || [], roadmapResponses: s.roadmapResponses, peerReview: s.peerReview, reflection: s.reflection, dataHandling: s.dataHandling,
@@ -80,11 +80,10 @@ export async function syncAssessment(user: User, raw: unknown) {
     }
     if (input.action === 'data-handling') {
       if(!t.dataGate || !input.dataHandling) throw new HttpError(422, 'No data-handling submission supplied for this track');
-      try {checkDataHandling(t,input.dataHandling);data.dataHandling=json(input.dataHandling);} catch {
-        const events=[...(s.hygieneEvents||[]),{type:'UNSAFE_CLASSIFICATION',phase:s.activePhase,at:new Date().toISOString(),decisions:input.dataHandling}];
-        const rejected=await tx.assessmentSession.update({where:{id:s.id},data:{hygieneEvents:json(events),revision:{increment:1}},include:{nodes:true,messages:true}});
-        return {...publicSession(rejected),gateError:'Unsafe field decisions were recorded. Correct the classifications before AI use.'};
-      }
+      if(s.dataHandling) throw new HttpError(409,'The data hygiene attempt has already been submitted');
+      const score=scoreHygiene(t,input.dataHandling);
+      data.dataHandling=json(input.dataHandling);
+      data.hygieneEvents=json([...(s.hygieneEvents||[]),{type:'HYGIENE_SUBMITTED',version:1,phase:s.activePhase,at:new Date().toISOString(),decisions:input.dataHandling,...score}]);
     }
     if (input.action === 'advance') {
       if (await tx.promptLog.count({ where: { sessionId: s.id, status: 'PENDING' } })) throw new HttpError(409, 'Wait for the pending Copilot response');

@@ -31,11 +31,10 @@ export function SimulationApp({initialSession,onSwitch}:{initialSession:any;onSw
   if(busy.current)return null;busy.current=true;setSaving(true);setError('');
   const submitted=pack(latest.current),sent=JSON.stringify(submitted);
   try{const r=await client.command({...submitted,action,...extra});
-   if(!r.gateError)saved.current=sent;
+   saved.current=sent;
    setS((current:any)=>({...r,work:current.work,drafts:current.drafts,nodes:current.nodes,roadmapResponses:current.roadmapResponses}));
    setRemaining(Math.max(0,Math.ceil((Date.parse(r.deadline)-Date.now())/1000)));
-   setStatus(r.gateError?'Classification rejected':sent===JSON.stringify(pack(latest.current))?'Saved to server':'Unsaved changes');
-   if(r.gateError){setError(r.gateError);return null;}
+   setStatus(sent===JSON.stringify(pack(latest.current))?'Saved to server':'Unsaved changes');
    if(action==='advance'){setTab('Workspace');if(r.phase===t.shockSegment&&r.status==='ACTIVE')setModal('Scenario update');}
    return r;
   }catch(e){setError((e as Error).message);setStatus('Save failed');return null;}finally{busy.current=false;setSaving(false);}
@@ -43,7 +42,7 @@ export function SimulationApp({initialSession,onSwitch}:{initialSession:any;onSw
  useEffect(()=>{if(readonly||fingerprint===saved.current||error||saving)return;setStatus('Unsaved changes');const timer=setTimeout(()=>{void command();},700);return()=>clearTimeout(timer);},[fingerprint,saving,readonly,error]);
  useEffect(()=>{const warn=(e:BeforeUnloadEvent)=>{if(JSON.stringify(pack(latest.current))!==saved.current){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[]);
  const changeWork=(work:any)=>setS((prev:any)=>({...prev,work}));
- const attempt:AttemptState={...createInitialAttemptState(t),attemptId:s.id,trackId:t.id,currentPhase:s.phase,isSubmitted:readonly,deliverables:s.drafts,roadmapNodesState:s.nodes,roadmapResponses:s.roadmapResponses,inbox:s.messages,work:s.work,dataHandling:s.dataHandling,dataGateCompleted:!!s.dataHandling,dataGatePassed:!!s.dataHandling,timeRemainingSeconds:remaining,chatByPhase:chat};
+ const attempt:AttemptState={...createInitialAttemptState(t),attemptId:s.id,trackId:t.id,currentPhase:s.phase,isSubmitted:readonly,deliverables:s.drafts,roadmapNodesState:s.nodes,roadmapResponses:s.roadmapResponses,inbox:s.messages,work:s.work,dataHandling:s.dataHandling,dataGateCompleted:!!s.dataHandling,dataGatePassed:!!s.dataHandling&&s.hygiene_multiplier===1,timeRemainingSeconds:remaining,chatByPhase:chat};
  const onMessage=(msg:ChatMessage)=>setChat((prev:any)=>({...prev,[s.phase]:[...(prev[s.phase]||[]),msg]}));
  const options=['Workspace','Roadmap','Stakeholder inbox','Reference materials','Deliverables','Artifact studio','Audit logs'];
  return <div className="work-shell"><header className="work-header"><div className="mr-auto"><h1>AIMI Superday <span className="work-badge">Revised design</span></h1><p className="text-xs text-neutral-500 mt-1">{t.title} / {t.companyName}</p></div><span className="font-mono text-sm" role="timer">{Math.floor(remaining/60).toString().padStart(2,'0')}:{(remaining%60).toString().padStart(2,'0')}</span><span className="text-xs text-neutral-500" role="status">{saving?'Saving…':status}</span><button className="work-secondary" disabled={saving||readonly} onClick={()=>command()}>Save now</button><button className="work-primary" disabled={saving||readonly} onClick={()=>command('advance')}>{s.phase===t.phases.length?'Submit assessment':`Complete segment ${s.phase}`} →</button></header>
