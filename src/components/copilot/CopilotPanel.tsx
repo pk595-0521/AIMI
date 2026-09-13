@@ -54,7 +54,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
   const chatMessages=useMemo(()=>(attemptState.chatByPhase[attemptState.currentPhase]||[]).filter(m=>m.sender==='user'||m.sender==='assistant'),[attemptState.chatByPhase,attemptState.currentPhase]);
   const scrollToBottom=()=>{const el=scrollRef.current;if(el)el.scrollTop=el.scrollHeight;};
   useLayoutEffect(()=>{following.current=true;setShowLatest(false);scrollToBottom();},[attemptState.currentPhase,isPanelOpen]);
-  useLayoutEffect(()=>{if(following.current)scrollToBottom();},[chatMessages,streamingText,isLoading]);
+  useLayoutEffect(()=>{if(following.current&&!scrollRef.current?.querySelector('.work-table-wrap:hover, .work-table-wrap:focus-within'))scrollToBottom();},[chatMessages,streamingText,isLoading]);
   const onChatScroll=()=>{const el=scrollRef.current;if(!el)return;following.current=el.scrollTop+el.clientHeight>=el.scrollHeight-60;setShowLatest(!following.current);};
 
   const handleTriggerSend = (e: React.FormEvent) => {

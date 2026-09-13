@@ -6,4 +6,8 @@ export function Modal({title,onClose,children}:{title:string;onClose:()=>void;ch
 // Preserve code literals; normalize legacy double-escaped line endings only in prose.
 export function normalizeTranscript(text:string){return text.split(/(```[\s\S]*?(?:```|$)|`[^`]*`)/g).map((part,i)=>i%2?part:part.replace(/\\r\\n|\\n/g,'\n')).join('');}
 function safeBreaks(){return(tree:any)=>{const walk=(node:any)=>{if(node.type==='html'&&/^<br\s*\/?\s*>$/i.test(node.value.trim())){node.type='break';delete node.value;}node.children?.forEach(walk);};walk(tree);};}
-export function Markdown({text}:{text:string}) {return <div className="work-prose"><ReactMarkdown remarkPlugins={[remarkGfm,safeBreaks]} skipHtml components={{table:({children})=><div className="work-table-wrap"><table>{children}</table></div>,img:({alt})=><span>{alt}</span>}}>{normalizeTranscript(text)}</ReactMarkdown></div>;}
+// Stable component identities preserve the table DOM and scrollLeft during streaming renders.
+const stopTableGesture=(event:React.SyntheticEvent)=>event.stopPropagation();
+function MarkdownTable({children}:{children?:React.ReactNode}) {return <div className="work-table-wrap overflow-x-auto w-full block scrollbar-thin" tabIndex={0} role="region" aria-label="Scrollable table" onTouchStart={stopTableGesture} onTouchMove={stopTableGesture} onWheel={stopTableGesture}><table>{children}</table></div>;}
+const markdownComponents={table:MarkdownTable,img:({alt}:{alt?:string})=><span>{alt}</span>};
+export function Markdown({text}:{text:string}) {return <div className="work-prose"><ReactMarkdown remarkPlugins={[remarkGfm,safeBreaks]} skipHtml components={markdownComponents}>{normalizeTranscript(text)}</ReactMarkdown></div>;}
