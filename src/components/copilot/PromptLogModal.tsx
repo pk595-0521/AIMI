@@ -50,15 +50,6 @@ export const PromptLogModal: React.FC<PromptLogModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
-          <div>
-            <label className="font-medium text-[#1A1A1A] block mb-1">
-              Query Preview:
-            </label>
-            <div className="p-3 bg-[#FAFAFA] border border-[#EBEBEB] rounded-lg text-[#333] font-mono text-[11px] line-clamp-2">
-              "{promptText}"
-            </div>
-          </div>
-
           <div className="space-y-1">
             <label className="font-medium text-[#1A1A1A] block">
               Why are you using AI for this step? (Audited)

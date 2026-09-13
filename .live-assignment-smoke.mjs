@@ -52,9 +52,12 @@ await grader.reload();const queue=(await api(grader,'/grader/sessions')).data;co
 if(process.env.LIVE_SMOKE_GROQ==='true'){
  const chat=candidate.getByPlaceholder('Ask Copilot for analysis, formulas, or risk frameworks…');await chat.fill('What is Vantage Logistics Solutions annual revenue? State the case fact in one sentence.');await chat.press('Enter');
  await candidate.getByPlaceholder('e.g., Synthesizing quantitative DCF assumptions or stress-testing rollout trade-offs...').fill('Verify a case fact from the released consulting exhibits.');
+ const streamResponse=candidate.waitForResponse(r=>r.url().endsWith('/api/copilot/chat'));
+ assert.equal(await candidate.getByText('Query Preview:',{exact:true}).count(),0);
  await candidate.getByRole('button',{name:'Log & Run Query'}).click();
  let audit;for(let i=0;i<60;i++){const logs=(await api(grader,'/grader/'+session.id+'/prompts')).data.rows;audit=logs.find(l=>l.provider==='Groq Cloud'&&l.status==='COMPLETE');if(audit)break;if(logs.some(l=>l.provider==='Groq Cloud'&&l.status==='FAILED'))throw new Error('Groq failed: '+await candidate.getByRole('alert').first().innerText());await new Promise(r=>setTimeout(r,1000));}
- assert.ok(audit,'Groq completion must be recorded');assert.equal(audit.model,(await api(candidate,'/copilot/config')).data.model);assert.match(audit.response,/145/);assert.ok(audit.prompt.includes('annual revenue'));
+ const response=await streamResponse;assert.equal(response.status(),200);assert.match(response.headers()['content-type'],/text\/event-stream/);const streamed=await response.text();assert.ok((streamed.match(/"type":"delta"/g)||[]).length>1);assert.ok(!streamed.includes('Act as an enterprise executive analyst'));
+ assert.ok(audit,'Groq completion must be recorded');assert.ok(['llama-3.3-70b-versatile','llama-3.1-8b-instant','openai/gpt-oss-120b'].includes(audit.model));await candidate.getByLabel('Active Copilot model').getByText(audit.model,{exact:true}).waitFor();assert.match(audit.response,/145/);assert.ok(audit.prompt.includes('annual revenue'));
  await candidate.getByText(/145/).last().waitFor();
  await grader.getByRole('button',{name:'Raw AI history',exact:true}).click();
  await grader.getByText(/annual revenue/).first().waitFor();

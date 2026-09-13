@@ -50,7 +50,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatMessages =
-    attemptState.chatByPhase[attemptState.currentPhase] || [];
+    (attemptState.chatByPhase[attemptState.currentPhase] || []).filter(m=>m.sender==='user'||m.sender==='assistant');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -94,7 +94,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
         loggedPurpose: meta.purpose,
         privateDataShared: meta.privateDataShared,
         aiVerificationEnabled: meta.aiVerificationEnabled,
-      },setStreamingText);
+      },setStreamingText,model=>setSelectedModel({name:model,provider:'Groq Cloud'}));
 
       const assistantMessage: ChatMessage = {
         id: reply.logId+'-response',
@@ -105,13 +105,6 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
       onSendMessage(assistantMessage);
     } catch (err) {
       setChatError(err instanceof Error?err.message:'Copilot is unavailable.');
-      const errorMessage: ChatMessage = {
-        id: `err_${Date.now()}`,
-        sender: 'system',
-        content: err instanceof Error ? err.message : 'Error processing Copilot query. Please try again.',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      onSendMessage(errorMessage);
     } finally {
       setIsLoading(false);setStreamingText('');
     }
@@ -184,18 +177,6 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
             {chatMessages.map((msg) => {
               const isAssistant = msg.sender === 'assistant';
               const isUser = msg.sender === 'user';
-              const isSystem = msg.sender === 'system';
-
-              if (isSystem) {
-                return (
-                  <div
-                    key={msg.id}
-                    className="p-2.5 rounded-lg bg-[#FAFAFA] border border-[#EBEBEB] text-[#1A1A1A] text-[11px] font-mono"
-                  >
-                    {isUser?msg.content:<Markdown text={msg.content}/>}
-                  </div>
-                );
-              }
 
               return (
                 <div
@@ -222,19 +203,19 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
                   <div
                     className={`p-3 rounded-xl max-w-[92%] leading-relaxed ${
                       isUser
-                        ? 'bg-black text-white rounded-br-xs'
+                        ? 'bg-white border border-[#EBEBEB] text-[#1A1A1A] rounded-br-xs'
                         : 'bg-[#FAFAFA] border border-[#EBEBEB] text-[#1A1A1A] rounded-bl-xs'
                     }`}
                   >
                     <div className="whitespace-pre-line font-sans text-xs font-light">
-                      {isUser?msg.content:<Markdown text={msg.content}/>}
+                      {isUser?(msg.content.length>600?<details><summary>Your message · expand to read</summary><p className="mt-2">{msg.content}</p></details>:msg.content):<Markdown text={msg.content}/>}
                     </div>
 
                     {msg.promptLogged && (
                       <div
                         className={`mt-2 pt-1.5 border-t text-[9px] font-mono flex items-center justify-between ${
                           isUser
-                            ? 'border-white/20 text-neutral-300'
+                            ? 'border-[#EBEBEB] text-[#777]'
                             : 'border-[#EBEBEB] text-[#777]'
                         }`}
                       >
