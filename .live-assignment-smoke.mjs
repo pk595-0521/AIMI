@@ -62,8 +62,8 @@ if(process.env.LIVE_SMOKE_GROQ==='true'){
  const table=candidate.getByTestId('copilot-scroll').locator('.work-table-wrap').last();await table.waitFor();await table.hover();await table.evaluate(el=>{el.scrollLeft=60;});await candidate.waitForTimeout(1500);assert.ok(await table.evaluate(el=>el.scrollLeft>0),'real Copilot table must retain horizontal position');console.log('PASS real Groq table horizontal position retained');
  await grader.getByRole('button',{name:'Raw AI history',exact:true}).click();
  await grader.getByText(/annual revenue/).first().waitFor();
- await grader.getByRole('button',{name:'Expand Full Transcript'}).click();await grader.getByRole('dialog',{name:'Full AI transcript'}).getByText(/145/).waitFor();await grader.keyboard.press('Escape');
- await candidate.getByRole('button',{name:'Audit logs',exact:true}).click();await candidate.getByRole('button',{name:'AI history',exact:true}).click();await candidate.getByRole('button',{name:'Expand Full Transcript'}).click();await candidate.getByRole('dialog',{name:'Full AI transcript'}).getByText(/145/).waitFor();await candidate.keyboard.press('Escape');
+ await grader.getByRole('button',{name:'Expand Full Transcript'}).click();await grader.getByRole('dialog',{name:'Full AI transcript'}).getByText(/145/).first().waitFor();await grader.keyboard.press('Escape');
+ await candidate.getByRole('button',{name:'Audit logs',exact:true}).click();await candidate.getByRole('button',{name:'AI history',exact:true}).click();await candidate.getByRole('button',{name:'Expand Full Transcript'}).click();await candidate.getByRole('dialog',{name:'Full AI transcript'}).getByText(/145/).first().waitFor();await candidate.keyboard.press('Escape');
  console.log('PASS live candidate and grader expanded transcripts');
  console.log('PASS real Groq UI stream: correct $145M case fact and complete grader audit');
 }
