@@ -61,6 +61,9 @@ if(process.env.LIVE_SMOKE_GROQ==='true'){
  await candidate.getByText(/145/).last().waitFor();
  await grader.getByRole('button',{name:'Raw AI history',exact:true}).click();
  await grader.getByText(/annual revenue/).first().waitFor();
+ await grader.getByRole('button',{name:'Expand Full Transcript'}).click();await grader.getByRole('dialog',{name:'Full AI transcript'}).getByText(/145/).waitFor();await grader.keyboard.press('Escape');
+ await candidate.getByRole('button',{name:'Audit logs',exact:true}).click();await candidate.getByRole('button',{name:'AI history',exact:true}).click();await candidate.getByRole('button',{name:'Expand Full Transcript'}).click();await candidate.getByRole('dialog',{name:'Full AI transcript'}).getByText(/145/).waitFor();await candidate.keyboard.press('Escape');
+ console.log('PASS live candidate and grader expanded transcripts');
  console.log('PASS real Groq UI stream: correct $145M case fact and complete grader audit');
 }
 await candidate.goto(base+'/assessment');await candidate.getByRole('combobox',{name:'Practice track'}).selectOption('product-management-v2');await candidate.getByRole('button',{name:'Self-Assign Beta Practice Track'}).click();await candidate.getByRole('heading',{name:'Before you begin'}).waitFor();console.log('PASS live self-assign practice');

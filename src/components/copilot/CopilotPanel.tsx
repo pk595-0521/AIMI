@@ -1,6 +1,6 @@
 import {api} from '../../services/api';
 import {Markdown} from '../revised/Primitives';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import {
   Sparkles,
   ChevronRight,
@@ -48,17 +48,14 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
   const [streamingText,setStreamingText]=useState('');
   const [chatError,setChatError]=useState('');
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatMessages =
-    (attemptState.chatByPhase[attemptState.currentPhase] || []).filter(m=>m.sender==='user'||m.sender==='assistant');
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [chatMessages, isLoading]);
+  const scrollRef=useRef<HTMLDivElement>(null);
+  const following=useRef(true);
+  const [showLatest,setShowLatest]=useState(false);
+  const chatMessages=useMemo(()=>(attemptState.chatByPhase[attemptState.currentPhase]||[]).filter(m=>m.sender==='user'||m.sender==='assistant'),[attemptState.chatByPhase,attemptState.currentPhase]);
+  const scrollToBottom=()=>{const el=scrollRef.current;if(el)el.scrollTop=el.scrollHeight;};
+  useLayoutEffect(()=>{following.current=true;setShowLatest(false);scrollToBottom();},[attemptState.currentPhase,isPanelOpen]);
+  useLayoutEffect(()=>{if(following.current)scrollToBottom();},[chatMessages,streamingText,isLoading]);
+  const onChatScroll=()=>{const el=scrollRef.current;if(!el)return;following.current=el.scrollTop+el.clientHeight>=el.scrollHeight-60;setShowLatest(!following.current);};
 
   const handleTriggerSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,7 +133,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
             className="xl:hidden fixed inset-0 bg-black/30 backdrop-blur-xs z-40 transition-opacity"
           />
 
-          <aside className="fixed xl:sticky right-0 top-0 bottom-0 z-50 xl:z-30 w-[85vw] sm:w-96 xl:w-80 2xl:w-96 bg-white border-l border-[#EBEBEB] text-[#1A1A1A] flex flex-col h-full shrink-0 select-none shadow-2xl xl:shadow-none animate-in slide-in-from-right duration-200">
+          <aside className="fixed xl:sticky right-0 top-0 bottom-0 z-50 xl:z-30 w-[85vw] sm:w-96 xl:w-80 2xl:w-96 bg-white border-l border-[#EBEBEB] text-[#1A1A1A] flex flex-col h-full shrink-0 min-w-0 shadow-2xl xl:shadow-none animate-in slide-in-from-right duration-200">
             {/* Header */}
             <div className="p-3.5 border-b border-[#EBEBEB] bg-white flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-2.5">
@@ -173,7 +170,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
           </div>
 
           {/* Chat Message Stream - Scrollable */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3.5 text-xs bg-white">
+          <div ref={scrollRef} onScroll={onChatScroll} data-testid="copilot-scroll" className="flex-1 min-h-0 min-w-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain p-4 space-y-3.5 text-xs bg-white" style={{overflowAnchor:'none'}}>
             {chatMessages.map((msg) => {
               const isAssistant = msg.sender === 'assistant';
               const isUser = msg.sender === 'user';
@@ -181,7 +178,7 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
               return (
                 <div
                   key={msg.id}
-                  className={`flex flex-col space-y-1 ${
+                  className={`flex flex-col w-full min-w-0 space-y-1 ${
                     isUser ? 'items-end' : 'items-start'
                   }`}
                 >
@@ -201,13 +198,13 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
                   </div>
 
                   <div
-                    className={`p-3 rounded-xl max-w-[92%] leading-relaxed ${
+                    className={`p-3 rounded-xl w-full min-w-0 break-words leading-relaxed ${
                       isUser
                         ? 'bg-white border border-[#EBEBEB] text-[#1A1A1A] rounded-br-xs'
                         : 'bg-[#FAFAFA] border border-[#EBEBEB] text-[#1A1A1A] rounded-bl-xs'
                     }`}
                   >
-                    <div className="whitespace-pre-line font-sans text-xs font-light">
+                    <div className="min-w-0 break-words font-sans text-xs font-light">
                       {isUser?(msg.content.length>600?<details><summary>Your message · expand to read</summary><p className="mt-2">{msg.content}</p></details>:msg.content):<Markdown text={msg.content}/>}
                     </div>
 
@@ -231,16 +228,17 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
             })}
 
             {chatError&&<p role="alert" className="work-warning">{chatError}</p>}
-            {streamingText&&<div aria-live="polite" className="p-3 text-xs"><Markdown text={streamingText}/></div>}
+            {streamingText&&<div aria-live="polite" className="p-3 w-full min-w-0 break-words text-xs"><Markdown text={streamingText}/></div>}
             {isLoading && (
               <div className="flex items-center space-x-2 text-[#777] text-xs py-2">
                 <Sparkles className="w-3.5 h-3.5 text-[#1A1A1A] animate-spin" />
                 <span className="font-light">Copilot is synthesizing analysis...</span>
               </div>
             )}
-            <div ref={messagesEndRef} />
+
           </div>
 
+          {showLatest&&<button className="work-secondary self-center my-2" onClick={()=>{following.current=true;setShowLatest(false);scrollToBottom();}}>Jump to latest</button>}
           {/* Bottom Chat Input - Permanently Docked */}
           <div className="shrink-0 p-3.5 border-t border-[#EBEBEB] bg-white space-y-2 sticky bottom-0">
             <form onSubmit={handleTriggerSend} className="relative">

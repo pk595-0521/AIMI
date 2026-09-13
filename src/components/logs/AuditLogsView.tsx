@@ -1,3 +1,5 @@
+import {Markdown} from '../revised/Primitives';
+import {FullTranscript,chatTranscript} from './FullTranscript';
 import React, { useState } from 'react';
 import {
   ShieldCheck,
@@ -228,7 +230,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({
 
           {/* 4. Prompts Tab */}
           {activeTab === 'prompts' && (
-            <div className="space-y-3">
+            <div className="space-y-3"><FullTranscript messages={chatTranscript(attemptState.chatByPhase)}/>
               <div className="flex items-center justify-between text-[#888] text-[11px] pb-2 border-b border-[#EBEBEB] font-mono">
                 <span>AI Prompt Query History</span>
                 <span>Audited Purposes</span>
@@ -252,7 +254,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-[#1A1A1A] font-mono">"{p.content}"</p>
+                    <Markdown text={p.content}/>
                   </div>
                 ))
               )}
