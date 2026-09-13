@@ -94,6 +94,7 @@ model AssessmentSession {
   evaluations Evaluation[]
   consents LegalConsent[]
   createdAt DateTime @default(now())
+  archivedAt DateTime?
   submittedAt DateTime?
   updatedAt DateTime @updatedAt
   @@index([organizationId, status])

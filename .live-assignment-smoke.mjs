@@ -49,7 +49,29 @@ assert.equal(await candidate.getByPlaceholder('Ask Copilot for analysis, formula
 console.log('PASS live incorrect first attempt unlocks Copilot, persists score and rejects retry');
 
 await grader.reload();const queue=(await api(grader,'/grader/sessions')).data;const session=queue.find(s=>s.applicant.email===c.email&&s.trackId==='consulting-v2');assert.ok(session);assert.equal(session.queueStatus,'in_progress');await grader.getByLabel('Assigned assessment').selectOption(session.id);await grader.getByRole('heading',{name:'Observable signals'}).waitFor();console.log('PASS live grader in-progress queue and evidence view');await grader.getByTestId('hygiene-calculation').waitFor();const calculation=await grader.getByTestId('hygiene-calculation').innerText();assert.ok(calculation.includes(gate.raw_hygiene_score.correct+'/'+gate.raw_hygiene_score.total));await grader.getByLabel('Data Hygiene & Privacy score',{exact:true}).fill('4');assert.ok((await grader.getByTestId('hygiene-calculation').innerText()).includes('Final Score: '+(4*gate.hygiene_multiplier).toFixed(2)+'/5'));console.log('PASS live grader gate multiplier calculation');
+if(process.env.LIVE_SMOKE_GROQ==='true'){
+ const chat=candidate.getByPlaceholder('Ask Copilot for analysis, formulas, or risk frameworks…');await chat.fill('What is Vantage Logistics Solutions annual revenue? State the case fact in one sentence.');await chat.press('Enter');
+ await candidate.getByPlaceholder('e.g., Synthesizing quantitative DCF assumptions or stress-testing rollout trade-offs...').fill('Verify a case fact from the released consulting exhibits.');
+ await candidate.getByRole('button',{name:'Log & Run Query'}).click();
+ let audit;for(let i=0;i<60;i++){const logs=(await api(grader,'/grader/'+session.id+'/prompts')).data.rows;audit=logs.find(l=>l.provider==='Groq Cloud'&&l.status==='COMPLETE');if(audit)break;if(logs.some(l=>l.provider==='Groq Cloud'&&l.status==='FAILED'))throw new Error('Groq failed: '+await candidate.getByRole('alert').first().innerText());await new Promise(r=>setTimeout(r,1000));}
+ assert.ok(audit,'Groq completion must be recorded');assert.equal(audit.model,(await api(candidate,'/copilot/config')).data.model);assert.match(audit.response,/145/);assert.ok(audit.prompt.includes('annual revenue'));
+ await candidate.getByText(/145/).last().waitFor();
+ await grader.getByRole('button',{name:'Raw AI history',exact:true}).click();
+ await grader.getByText(/annual revenue/).first().waitFor();
+ console.log('PASS real Groq UI stream: correct $145M case fact and complete grader audit');
+}
 await candidate.goto(base+'/assessment');await candidate.getByRole('combobox',{name:'Practice track'}).selectOption('product-management-v2');await candidate.getByRole('button',{name:'Self-Assign Beta Practice Track'}).click();await candidate.getByRole('heading',{name:'Before you begin'}).waitFor();console.log('PASS live self-assign practice');
+await admin.getByRole('button',{name:'Refresh people and tracks'}).click();
+await admin.getByTestId('assignment-'+session.id).getByRole('button',{name:'Archive',exact:true}).click();
+await admin.getByRole('dialog',{name:'Archive assessment'}).getByRole('button',{name:'Cancel',exact:true}).click();
+assert.ok((await api(candidate,'/tracks')).data.some(t=>t.id==='consulting-v2'));
+await admin.getByTestId('assignment-'+session.id).getByRole('button',{name:'Archive',exact:true}).click();
+await admin.getByRole('button',{name:'Confirm archive',exact:true}).click();
+await admin.getByText('Assessment archived and removed from the candidate portal.',{exact:true}).waitFor();
+assert.ok(!(await api(candidate,'/tracks')).data.some(t=>t.id==='consulting-v2'));
+assert.ok(!(await api(grader,'/grader/sessions')).data.some(s=>s.id===session.id));
+assert.equal((await api(candidate,'/assessment?trackId=consulting-v2')).status,404);
+console.log('PASS live archive confirmation, cancellation, candidate removal and grader queue filtering');
 assert.equal((await api(candidate,'/admin/people')).status,403);console.log('PASS candidate admin API denied');
 console.log('Health '+(await (await fetch(base+'/api/health')).text()));
 }finally{for(const [role,page] of Object.entries(pages)){await writeFile(join(stateDir,role+'.json'),JSON.stringify(await page.context().storageState()),{mode:0o600});}await browser.close();}

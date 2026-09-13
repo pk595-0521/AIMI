@@ -10,7 +10,7 @@ import { canAccessPortal } from '../src/auth-roles';
 export const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 export async function ownedSession(tx: any, id: string, user: User) {
   if (!canAccessPortal(user.role, 'assessment')) throw new HttpError(403, 'Candidate access required');
-  const s = await tx.assessmentSession.findFirst({ where: { id, applicantId: user.id, organizationId: user.organizationId }, include: { nodes: true, messages: true } });
+  const s = await tx.assessmentSession.findFirst({ where: { id, archivedAt: null, applicantId: user.id, organizationId: user.organizationId }, include: { nodes: true, messages: true } });
   if (!s) throw new HttpError(404, 'Assessment not found');
   return s;
 }

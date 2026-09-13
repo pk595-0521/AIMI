@@ -19,6 +19,7 @@ for(const t of TRACK_LIST)test(`${t.id}: only released context and shock are sen
 test('Groq request uses exact model and emits deltas; errors and truncated streams fail',async()=>{
  const fixture=(text:string,status=200)=>(async(_url:any,options:any)=>{const body=JSON.parse(options.body);assert.equal(body.model,'llama-3.3-70b-versatile');assert.equal(body.temperature,.2);assert.equal(body.stream,true);return new Response(text,{status});}) as typeof fetch;
  assert.deepEqual(await collect(groqStream([],new AbortController().signal,fixture('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\ndata: [DONE]\n\n'))),['Hello']);
+ await assert.rejects(()=>collect(groqStream([],new AbortController().signal,fixture('',404))),/model is unavailable/);
  await assert.rejects(()=>collect(groqStream([],new AbortController().signal,fixture('',429))),/rate-limited/);
  await assert.rejects(()=>collect(groqStream([],new AbortController().signal,fixture('data: {"choices":[]}\n\n'))),/Incomplete/);
 });

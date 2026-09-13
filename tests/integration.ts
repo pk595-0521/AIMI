@@ -17,7 +17,7 @@ try{
  await pg.initialise();await pg.start();await pg.createDatabase('aimi_test');
  process.env.DATABASE_URL=`postgresql://aimi_test:local-test-only@127.0.0.1:${port}/aimi_test`;
  const client=pg.getPgClient('aimi_test');await client.connect();
- for(const migration of ['202609100001_initial','202609100002_revised_design'])await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`,'utf8'));
+ for(const migration of ['202609100001_initial','202609100002_revised_design','20260913021939_archive_assessments'])await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`,'utf8'));
  await client.query('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role');
  await client.query(await readFile('supabase/migrations/20260912213026_copilot_audit_logs_view.sql','utf8'));
  await client.query('CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text)');await client.end();
@@ -129,5 +129,20 @@ try{
  // A separate expired attempt must reject mutations on the server, independently of UI timer state.
  const expired=await db.assessmentSession.create({data:{applicantId:applicant.id,organizationId:org.id,trackId:'consulting-v2',scenarioVersion:2,scenarioSnapshot:TRACK_LIST[0],rubricSnapshot:TRACK_LIST[0].rubric,phaseDeadlineAt:new Date(Date.now()-1000),consents:{create:{userId:applicant.id,policyVersion:policy.version,policyDigest,monitoringAccepted:true,zeroRetrainingAccepted:true,humanReviewAccepted:true,ipAddress:'127.0.0.1',userAgent:'fixture'}}}});
  await call(applicant,'/assessment/sync',{sessionId:expired.id,revision:0,action:'save'},409);
+ const list=await call(employer,'/admin/assessments');assert.equal(list.find((r:any)=>r.id===expired.id).expired,true);
+ const foreignAdmin=await user('EMPLOYER_ADMIN','foreign-admin',otherOrg.id);
+ await call(applicant,'/admin/assessments/archive',{assessment_id:expired.id},403);
+ await call(grader,'/admin/assessments/archive',{assessment_id:expired.id},403);
+ await call(foreignAdmin,'/admin/assessments/archive',{assessment_id:expired.id},404);
+ const before=await db.promptLog.count({where:{sessionId:lastSession.id}});
+ for(const id of [expired.id,lastSession.id]){await call(employer,'/admin/assessments/archive',{assessment_id:id});await call(employer,'/admin/assessments/archive',{assessment_id:id});}
+ assert.ok(!(await call(grader,'/grader/sessions')).some((r:any)=>r.id===lastSession.id));
+ assert.ok(!(await call(employer,'/admin/assessments')).some((r:any)=>r.id===expired.id));
+ await call(applicant,'/assessment/sync',{sessionId:lastSession.id,revision:lastSession.revision,action:'save'},404);
+ assert.equal(await db.promptLog.count({where:{sessionId:lastSession.id}}),before);
+ assert.ok(!(await call(applicant,'/tracks')).some((t:any)=>t.id===lastSession.trackId));
+ await call(applicant,'/assessment?trackId='+lastSession.trackId,undefined,404);
+ const replacement=await call(applicant,'/practice',{trackId:lastSession.trackId},201);assert.notEqual(replacement.sessionId,lastSession.id);
+ console.log('PASS archive role/tenant checks, idempotency, hidden candidate/reviewer queues, retained audit and replacement assignment');
  console.log('PASS deadline enforcement and both SQL migrations on isolated PostgreSQL');
 }finally{if(server)await new Promise<void>(r=>server.close(()=>r()));if(issuer)await new Promise<void>(r=>issuer.close(()=>r()));if(db)await db.$disconnect();await pg.stop().catch(()=>{});await rm(dir,{recursive:true,force:true});}

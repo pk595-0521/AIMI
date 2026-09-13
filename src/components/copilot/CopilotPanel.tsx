@@ -1,3 +1,4 @@
+import {api} from '../../services/api';
 import {Markdown} from '../revised/Primitives';
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -116,7 +117,8 @@ export const CopilotPanel: React.FC<CopilotPanelProps> = ({
     }
   };
 
-  const selectedModel = COPILOT_MODELS[0];
+  const [selectedModel,setSelectedModel]=useState({name:'Groq Cloud',provider:'Groq Cloud'});
+  useEffect(()=>{api('/copilot/config').then(c=>setSelectedModel({name:c.model,provider:c.provider})).catch(()=>{});},[]);
 
   return (
     <>

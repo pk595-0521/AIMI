@@ -107,8 +107,8 @@ function CandidateAssessment({ demo = false }: { demo?: boolean }) {
   if(!trackId) return <><PracticeTracks onAssigned={id => { api('/tracks').then(setTracks).catch(e => setError(e.message)); void load(id as TrackId); }} /><TrackSelectionView tracks={tracks} onSelectTrack={load}/></>;
   if(!session) return <p role="status" className="p-8">Loading assigned assessment…</p>;
   if(!session.consented) return <LegalConsentModal sessionId={session.id} policy={identity.policy} ready={identity.enrollmentReady ?? identity.governanceReady} onAccepted={() => load(trackId)}/>;
-  if(session.track.designVersion===2)return <RevisedSimulationApp key={session.id} initialSession={session} onSwitch={()=>{setTrackId(null);setSession(null);}}/>;
-  return <SimulationApp key={session.id} initialSession={session} onSwitch={() => { setTrackId(null); setSession(null); }}/>;
+  if(session.track.designVersion===2)return <RevisedSimulationApp key={session.id} initialSession={session} onSwitch={()=>{setTrackId(null);setSession(null);api('/tracks').then(setTracks).catch(e=>setError(e.message));}}/>;
+  return <SimulationApp key={session.id} initialSession={session} onSwitch={() => { setTrackId(null); setSession(null); api('/tracks').then(setTracks).catch(e=>setError(e.message)); }}/>;
 }
 function SimulationApp({ initialSession, onSwitch }: { initialSession: any; onSwitch: () => void }) {
   const client = useMemo(() => new AssessmentClient(initialSession), [initialSession.id]);

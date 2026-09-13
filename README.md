@@ -66,3 +66,9 @@ Set the server-only `GROQ_API_KEY` in Render. Candidate Copilot uses Groq's Open
 Audit responses are stored in the existing `PromptLog` table and exposed through the service-only `copilot_audit_logs` view (migration `20260912213026_copilot_audit_logs_view.sql`). This preserves existing grader history and AI verification references without maintaining duplicate audit stores. Completion audit failures are logged server-side and do not truncate the stream. Provider failures and disconnects record partial responses as failed where storage is available.
 
 Consent version `2026-09-12.2` describes Groq transmission and potential abuse-monitoring retention. Groq's published service terms prohibit model training absent customer permission; enable zero data retention in the Groq console if required by your organization. Missing keys produce a friendly configuration error; rate limits produce a retry message. No simulated answer is returned.
+
+### Assignment archiving
+
+Employer admins can archive assignments from Manage assignments, with confirmation and an Expired only filter. Assigned attempts without consent are not expired. `POST /api/admin/assessments/archive` accepts `{assessment_id}` and is tenant-scoped, admin-only, and idempotent. `archivedAt` excludes the assignment from candidate and reviewer queues and blocks further candidate writes. Evidence and audit rows remain accessible to authorized reviewers through the existing protected APIs. Apply the archive migration before starting the updated server.
+
+`GROQ_MODEL` overrides the server default when a model is unavailable on the account. The Copilot header reads the actual model from the authenticated configuration endpoint. A model-not-found response produces a configuration message instead of an unexplained provider failure.

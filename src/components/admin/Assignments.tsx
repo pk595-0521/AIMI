@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
+import { Modal } from '../revised/Primitives';
 import { api } from '../../services/api';
 export function AdminAssignments({ onAssigned }: { onAssigned: () => void }) {
   const [tracks, setTracks] = useState<any[]>([]), [people, setPeople] = useState<any[]>([]);
   const [track, setTrack] = useState(''), [candidate, setCandidate] = useState(''), [grader, setGrader] = useState('');
   const [message, setMessage] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  async function refresh() { try { const [t, p] = await Promise.all([api('/catalog'), api('/admin/people')]); setTracks(t); setPeople(p); } catch (e) { setError((e as Error).message); } }
+  const [rows,setRows]=useState<any[]>([]),[expiredOnly,setExpiredOnly]=useState(false),[removing,setRemoving]=useState<any>(null);
+  async function archive(){setBusy(true);setError('');try{await api('/admin/assessments/archive',{assessment_id:removing.id});setRemoving(null);await refresh();onAssigned();setMessage('Assessment archived and removed from the candidate portal.');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function refresh() { try { const [t, p, r] = await Promise.all([api('/catalog'), api('/admin/people'),api('/admin/assessments')]); setTracks(t); setPeople(p);setRows(r); } catch (e) { setError((e as Error).message); } }
   useEffect(() => { void refresh(); }, []);
   async function assign(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(''); setMessage('');
-    try { await api('/admin/assignments', { trackId: track, candidateId: candidate, ...(grader ? { graderId: grader } : {}) }); setMessage(`Assessment ${tracks.find(t => t.id === track)?.title} assigned to ${people.find(p => p.id === candidate)?.name}`); onAssigned(); }
+    try { await api('/admin/assignments', { trackId: track, candidateId: candidate, ...(grader ? { graderId: grader } : {}) }); setMessage(`Assessment ${tracks.find(t => t.id === track)?.title} assigned to ${people.find(p => p.id === candidate)?.name}`); await refresh(); onAssigned(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   async function certify(id: string) { setBusy(true); setError(''); try { await api(`/admin/graders/${id}/certify`, { confirmed: true }); await refresh(); setMessage('Grader approved for human scoring.'); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
@@ -20,6 +23,8 @@ export function AdminAssignments({ onAssigned }: { onAssigned: () => void }) {
       <button disabled={busy || !candidate || !track} className="work-primary self-end justify-center">Assign Assessment</button>
     </form>
     {!!people.filter(p => p.role === 'GRADER' && !p.certifiedGrader).length && <details className="mt-4"><summary>Grader scoring authorization</summary><p className="work-muted my-3">Approve only graders whose training you have verified. Approval permits scoring assigned assessments.</p>{people.filter(p => p.role === 'GRADER' && !p.certifiedGrader).map(p => <div key={p.id} className="flex gap-3 my-2 items-center"><span>{p.name}</span><button disabled={busy} className="work-secondary" onClick={() => certify(p.id)}>Confirm training and approve {p.name}</button></div>)}</details>}
+    <div className="mt-6"><h3>Manage assignments</h3><label className="flex gap-2 my-3"><input type="checkbox" checked={expiredOnly} onChange={e=>setExpiredOnly(e.target.checked)}/>Expired only</label><div className="work-table-wrap"><table><thead><tr><th>Candidate</th><th>Assessment</th><th>Status</th><th>Action</th></tr></thead><tbody>{rows.filter(r=>!expiredOnly||r.expired).map(r=><tr key={r.id} data-testid={'assignment-'+r.id}><td>{r.applicant.email}</td><td>{r.track.title}</td><td><span className="work-badge">{r.expired?'Expired':r.status==='ACTIVE'?(r._count.consents?'In progress':'Assigned'):r.status}</span></td><td><button disabled={busy} className="work-secondary" onClick={()=>setRemoving(r)}>Archive</button></td></tr>)}</tbody></table></div>{!rows.filter(r=>!expiredOnly||r.expired).length&&<p className="work-muted">No matching assignments.</p>}<p className="work-muted text-xs mt-2">Showing up to 500 recent assignments. Archiving retains assessment evidence and audit history.</p></div>
+    {removing&&<Modal title="Archive assessment" onClose={()=>{if(!busy)setRemoving(null);}}><p>Are you sure you want to remove this assessment? It will be cleared from the candidate portal.</p><p className="my-4">{removing.applicant.email} · {removing.track.title}</p><div className="flex gap-3"><button disabled={busy} className="work-secondary" onClick={()=>setRemoving(null)}>Cancel</button><button disabled={busy} className="work-primary" onClick={archive}>Confirm archive</button></div></Modal>}
     {message && <p role="status" className="mt-4 text-green-800">{message}</p>}{error && <p role="alert" className="work-warning mt-4">{error}</p>}
   </section>;
 }

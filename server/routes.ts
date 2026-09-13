@@ -33,13 +33,13 @@ api.use(assignments);
 api.use(copilot);
 api.get('/tracks', handler(async (req,res) => {
   if (!canAccessPortal(req.user.role, 'assessment')) throw new HttpError(403, 'Candidate access required');
-  const assigned = await db.assessmentSession.findMany({ where: { applicantId: req.user.id, organizationId: req.user.organizationId }, distinct: ['trackId'] });
+  const assigned = await db.assessmentSession.findMany({ where: { archivedAt: null, applicantId: req.user.id, organizationId: req.user.organizationId }, distinct: ['trackId'] });
   res.json(assigned.map(s => { const t=s.scenarioSnapshot as unknown as TrackConfig; return { id:s.trackId, title:t.title, companyName:t.companyName, roleTitle:t.roleTitle, companyBackground:t.companyBackground, activeObjective:t.activeObjective, phases:t.phases.map(({id,number,title,subtitle,durationSeconds})=>({id,number,title,subtitle,durationSeconds})), deliverables:t.deliverables.map(d=>({id:d.id})), emergencyConstraint:{title:`A new development arrives in segment ${t.shockSegment||3}`} }; }));
 }));
 api.get('/assessment', handler(async (req,res) => {
   if (!canAccessPortal(req.user.role, 'assessment')) throw new HttpError(403, 'Candidate access required');
   const trackId = z.string().parse(req.query.trackId);
-  const s = await db.assessmentSession.findFirst({ where: { applicantId: req.user.id, organizationId: req.user.organizationId, trackId }, orderBy: { createdAt: 'desc' }, include: { nodes: true, messages: true } });
+  const s = await db.assessmentSession.findFirst({ where: { archivedAt: null, applicantId: req.user.id, organizationId: req.user.organizationId, trackId }, orderBy: { createdAt: 'desc' }, include: { nodes: true, messages: true } });
   if (!s) throw new HttpError(404, 'No assessment has been assigned for this track');
   const consent = await db.legalConsent.findUnique({ where: { sessionId_policyVersion: { sessionId: s.id, policyVersion: policy.version } } });
   if (consent && s.status === 'ACTIVE' && s.phaseDeadlineAt.getTime() <= Date.now()) {
@@ -119,7 +119,7 @@ async function reviewAccess(req: AuthRequest, sessionId: string) {
 }
 api.get('/grader/sessions', handler(async (req,res) => {
   if (req.user.role === 'APPLICANT') throw new HttpError(403,'Reviewer access required');
-  const sessions = await db.assessmentSession.findMany({ where: { ...(req.user.role === 'SYSTEM_ADMIN' ? {} : { organizationId: req.user.organizationId }), ...(req.user.role === 'GRADER' ? { OR: [{ evaluations: { some: { graderId: req.user.id } } }, { evaluations: { none: {} } }] } : {}) }, select: { id: true, trackId: true, status: true, createdAt: true, applicant: { select: { email: true } }, evaluations: { select: { graderId: true } }, _count: { select: { consents: true } } }, take: 100, orderBy: { createdAt: 'desc' } });
+  const sessions = await db.assessmentSession.findMany({ where: { archivedAt: null, ...(req.user.role === 'SYSTEM_ADMIN' ? {} : { organizationId: req.user.organizationId }), ...(req.user.role === 'GRADER' ? { OR: [{ evaluations: { some: { graderId: req.user.id } } }, { evaluations: { none: {} } }] } : {}) }, select: { id: true, trackId: true, status: true, createdAt: true, applicant: { select: { email: true } }, evaluations: { select: { graderId: true } }, _count: { select: { consents: true } } }, take: 100, orderBy: { createdAt: 'desc' } });
   res.json(sessions.map(s => ({ ...s, canClaim: req.user.role === 'GRADER' && !s.evaluations.length, queueStatus: s.status === 'ACTIVE' ? s._count.consents ? 'in_progress' : 'assigned' : s.status.toLowerCase() })));
 }));
 api.get('/grader/:sessionId', handler(async (req,res) => {
@@ -139,6 +139,7 @@ api.post('/grader/:sessionId/evaluation', handler(async (req,res) => {
   const result = await db.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "AssessmentSession" WHERE id = ${id}::uuid FOR UPDATE`;
     const s = await tx.assessmentSession.findUniqueOrThrow({ where: { id } });
+    if(s.archivedAt)throw new HttpError(409,'Archived assessments cannot be scored');
     if (s.status === 'ACTIVE') throw new HttpError(409,'Wait until the assessment is submitted');
     const criteria = s.rubricSnapshot as any[];
     const total = scoreRubric(criteria,input.scores,input.planningCapApplied && s.scenarioVersion===1 && s.trackId === 'product-management',sessionHygiene(s).hygiene_multiplier);

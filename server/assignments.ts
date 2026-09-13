@@ -16,7 +16,7 @@ export async function assignSession(tx: Prisma.TransactionClient, applicant: Use
   const track = await tx.assessmentTrack.findUnique({ where: { id: trackId } });
   if (!track?.approved) throw new HttpError(404, 'Active assessment not found');
   if (graderId && !await tx.user.findFirst({ where: { id: graderId, organizationId: applicant.organizationId, role: 'GRADER', disabled: false, certifiedGrader: true } })) throw new HttpError(422, 'Select a certified grader in the candidate organization');
-  const existing = await tx.assessmentSession.findFirst({ where: { applicantId: applicant.id, trackId, status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } });
+  const existing = await tx.assessmentSession.findFirst({ where: { applicantId: applicant.id, trackId, archivedAt: null, status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } });
   if (existing) {
     if (graderId) await tx.evaluation.upsert({ where: { sessionId_graderId: { sessionId: existing.id, graderId } }, update: {}, create: { sessionId: existing.id, graderId, rubricVersion: track.rubricVersion } });
     return existing;
@@ -68,9 +68,27 @@ assignments.post('/grader/claim', wrap(async (req, res) => {
   const { sessionId } = z.object({ sessionId: z.string().uuid() }).strict().parse(req.body);
   await db.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "AssessmentSession" WHERE id=${sessionId}::uuid FOR UPDATE`;
-    const session = await tx.assessmentSession.findFirst({ where: { id: sessionId, organizationId: req.user.organizationId }, include: { evaluations: true, track: true } });
+    const session = await tx.assessmentSession.findFirst({ where: { id: sessionId, archivedAt: null, organizationId: req.user.organizationId }, include: { evaluations: true, track: true } });
     if (!session) throw new HttpError(404, 'Assessment not found');
     if (session.evaluations.some(e => e.graderId !== req.user.id)) throw new HttpError(409, 'Assessment already has an assigned grader');
     await tx.evaluation.upsert({ where: { sessionId_graderId: { sessionId, graderId: req.user.id } }, update: {}, create: { sessionId, graderId: req.user.id, rubricVersion: session.track.rubricVersion } });
   }); res.json({ assigned: true });
+}));
+
+// Archive retains evidence and grading history; tenant and role checks apply to every write.
+assignments.get('/admin/assessments', wrap(async (req, res) => {
+  admin(req.user);
+  const rows = await db.assessmentSession.findMany({where:{organizationId:req.user.organizationId,archivedAt:null},select:{id:true,trackId:true,status:true,phaseDeadlineAt:true,createdAt:true,applicant:{select:{email:true}},track:{select:{title:true}},_count:{select:{consents:true}}},orderBy:{createdAt:'desc'},take:500});
+  res.json(rows.map(s=>({...s,expired:s.status==='EXPIRED'||(s.status==='ACTIVE'&&s._count.consents>0&&s.phaseDeadlineAt.getTime()<Date.now())})));
+}));
+assignments.post('/admin/assessments/archive', wrap(async (req, res) => {
+  admin(req.user);
+  const {assessment_id}=z.object({assessment_id:z.string().uuid()}).strict().parse(req.body);
+  await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT id FROM "AssessmentSession" WHERE id=${assessment_id}::uuid FOR UPDATE`;
+    const s=await tx.assessmentSession.findFirst({where:{id:assessment_id,organizationId:req.user.organizationId}});
+    if(!s)throw new HttpError(404,'Assessment not found');
+    if(!s.archivedAt)await tx.assessmentSession.update({where:{id:s.id},data:{archivedAt:new Date(),revision:{increment:1}}});
+  });
+  res.json({archived:true,assessment_id});
 }));
