@@ -74,3 +74,7 @@ Employer admins can archive assignments from Manage assignments, with confirmati
 `GROQ_MODEL` overrides the server default when a model is unavailable on the account. The Copilot header reads the actual model from the authenticated configuration endpoint. A model-not-found response produces a configuration message instead of an unexplained provider failure.
 
 Copilot retries unavailable/deprecated or rate-limited models before emitting content: primary Llama 3.3 70B → Llama 3.1 8B → GPT-OSS 120B. Override the bounded server-only list with `GROQ_FALLBACK_MODELS`. Authentication failures and partially emitted streams are never retried across models. The actual answering model is recorded in the audit row and SSE header. Candidate chat renders only user/assistant messages; long pasted questions are collapsed and the query preview is removed.
+
+## AIMI Screen
+
+AIMI Screen adds four isolated 40-minute cases alongside the existing Superday tracks. See [Screen architecture, scoring and deployment](docs/AIMI_SCREEN.md). Select the assessment type in the employer assignment form. Screen uses a blocking hygiene gate, one branching decision, a timed emergency update and a five-part executive memo with exactly one visual. Its dedicated grader applies the 55/45 rubric and evidence-based hard caps.

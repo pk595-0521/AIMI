@@ -1,3 +1,4 @@
+import {effectiveScreenCaps,scoreScreen} from '../src/screen-scoring';
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import type { Prisma, User } from '@prisma/client';
@@ -24,7 +25,7 @@ export async function assignSession(tx: Prisma.TransactionClient, applicant: Use
   const t = track.scenario as unknown as TrackConfig;
   return tx.assessmentSession.create({ data: {
     applicantId: applicant.id, organizationId: applicant.organizationId, trackId,
-    scenarioVersion: track.version, scenarioSnapshot: json(t), rubricSnapshot: json(t.rubric),
+    assessmentType:t.assessmentType||'AIMI_SUPERDAY', scenarioVersion: track.version, scenarioSnapshot: json(t), rubricSnapshot: json(t.rubric),
     // Consent starts the clock; an assignment itself cannot expire before start.
     phaseDeadlineAt: new Date(), drafts: json(Object.fromEntries(t.deliverables.map(d => [d.id, { id: d.id, value: '' }]))),
     ...(graderId ? { evaluations: { create: { graderId, rubricVersion: track.rubricVersion } } } : {}),
@@ -51,9 +52,11 @@ assignments.post('/admin/graders/:id/certify', wrap(async (req, res) => {
 }));
 assignments.post('/admin/assignments', wrap(async (req, res) => {
   admin(req.user);
-  const input = z.object({ candidateId: z.string().uuid(), trackId: z.string().max(100), graderId: z.string().uuid().optional() }).strict().parse(req.body);
+  const input = z.object({ candidateId: z.string().uuid(), trackId: z.string().max(100), graderId: z.string().uuid().optional(),assessmentType:z.enum(['AIMI_SCREEN','AIMI_SUPERDAY']).optional() }).strict().parse(req.body);
   const candidate = await db.user.findFirst({ where: { id: input.candidateId, organizationId: req.user.organizationId, role: 'APPLICANT', disabled: false } });
   if (!candidate) throw new HttpError(404, 'Candidate not found');
+  const selected=await db.assessmentTrack.findUnique({where:{id:input.trackId}});
+  if(input.assessmentType&&((selected?.scenario as any)?.assessmentType||'AIMI_SUPERDAY')!==input.assessmentType)throw new HttpError(422,'Assessment type does not match the selected track.');
   const session = await db.$transaction(tx => assignSession(tx, candidate, input.trackId, input.graderId));
   res.status(201).json({ sessionId: session.id, trackId: session.trackId });
 }));
@@ -78,7 +81,7 @@ assignments.post('/grader/claim', wrap(async (req, res) => {
 // Archive retains evidence and grading history; tenant and role checks apply to every write.
 assignments.get('/admin/assessments', wrap(async (req, res) => {
   admin(req.user);
-  const rows = await db.assessmentSession.findMany({where:{organizationId:req.user.organizationId,archivedAt:null},select:{id:true,trackId:true,status:true,phaseDeadlineAt:true,createdAt:true,applicant:{select:{email:true}},track:{select:{title:true}},_count:{select:{consents:true}}},orderBy:{createdAt:'desc'},take:500});
+  const rows = await db.assessmentSession.findMany({where:{organizationId:req.user.organizationId,archivedAt:null},select:{id:true,assessmentType:true,trackId:true,status:true,phaseDeadlineAt:true,createdAt:true,applicant:{select:{email:true}},track:{select:{title:true}},_count:{select:{consents:true}}},orderBy:{createdAt:'desc'},take:500});
   res.json(rows.map(s=>({...s,expired:s.status==='EXPIRED'||(s.status==='ACTIVE'&&s._count.consents>0&&s.phaseDeadlineAt.getTime()<Date.now())})));
 }));
 assignments.post('/admin/assessments/archive', wrap(async (req, res) => {
@@ -91,4 +94,12 @@ assignments.post('/admin/assessments/archive', wrap(async (req, res) => {
     if(!s.archivedAt)await tx.assessmentSession.update({where:{id:s.id},data:{archivedAt:new Date(),revision:{increment:1}}});
   });
   res.json({archived:true,assessment_id});
+}));
+
+assignments.get('/admin/screen-analytics',wrap(async(req,res)=>{
+ admin(req.user);
+ const rows=await db.assessmentSession.findMany({where:{organizationId:req.user.organizationId,assessmentType:'AIMI_SCREEN',archivedAt:null},select:{id:true,trackId:true,status:true,dataHandling:true,hygieneEvents:true,finalDeliverable:true,scenarioSnapshot:true,evaluations:{where:{finalizedAt:{not:null}},orderBy:{updatedAt:'desc'},take:1,select:{scores:true,screenCaps:true,overallScore:true}}},orderBy:{createdAt:'desc'},take:500});
+ const attempts=rows.flatMap(s=>(s.hygieneEvents as any[]).filter(e=>e.type==='SCREEN_HYGIENE_ATTEMPT'));
+ const graded=rows.filter(s=>s.evaluations.length).map(s=>{const e=s.evaluations[0];return {sessionId:s.id,trackId:s.trackId,...scoreScreen(e.scores as any,effectiveScreenCaps(s,e.screenCaps as any),(s.scenarioSnapshot as any).id)};});
+ res.json({sampleSize:rows.length,limit:500,gateAttempts:attempts.length,passedAttempts:attempts.filter(e=>e.passed).length,failedAttempts:attempts.filter(e=>!e.passed).length,passedSessions:rows.filter(s=>s.dataHandling).length,graded});
 }));

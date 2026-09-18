@@ -160,6 +160,7 @@ export interface RubricCategory {
 }
 
 export interface TrackConfig {
+  assessmentType?: 'AIMI_SCREEN' | 'AIMI_SUPERDAY';
   designVersion?: number;
   shockSegment?: number;
   minimumInitialClaims?: number;

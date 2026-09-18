@@ -1,3 +1,4 @@
+import { isScreen,refreshScreenClock,syncScreen } from './screen-workflow';
 import { Prisma } from '@prisma/client';
 import { db } from './db';
 import { HttpError, syncSchema } from './validation';
@@ -12,7 +13,7 @@ export async function ownedSession(tx: any, id: string, user: User) {
   if (!canAccessPortal(user.role, 'assessment')) throw new HttpError(403, 'Candidate access required');
   const s = await tx.assessmentSession.findFirst({ where: { id, archivedAt: null, applicantId: user.id, organizationId: user.organizationId }, include: { nodes: true, messages: true } });
   if (!s) throw new HttpError(404, 'Assessment not found');
-  return s;
+  return refreshScreenClock(tx,s);
 }
 export async function requireConsent(tx: any, id: string) {
   if (!await tx.legalConsent.findUnique({ where: { sessionId_policyVersion: { sessionId: id, policyVersion: policy.version } } })) throw new HttpError(403, 'Accept the current assessment consent before continuing');
@@ -22,15 +23,17 @@ export function assertActive(s: any) {
 }
 export function publicSession(s: any) {
   const t = s.scenarioSnapshot as unknown as TrackConfig;
+  const locked=isScreen(s)&&(!s.dataHandling||s.activePhase<2);
   return {
+    assessmentType:s.assessmentType,screenStartedAt:s.screenStartedAt,shockTriggeredAt:s.shockTriggeredAt,finalDeliverable:s.finalDeliverable,scratchpad:s.scratchpad,branchingDecision:s.branchingDecision,dataHygieneSelections:s.dataHygieneSelections,
     id: s.id, trackId: s.trackId, revision: s.revision, phase: s.activePhase, ...sessionHygiene(s),
     deadline: s.phaseDeadlineAt.toISOString(), status: s.status,
     drafts: s.drafts, nodes: s.nodes.map((n: any) => ({ ...n, id: n.key, phaseId: n.phase, position: { x: n.positionX, y: n.positionY }, owner:n.owner||'',dependencies:n.dependencies||'',targetMilestone:n.targetMilestone||'',triggerThreshold:n.triggerThreshold||'' })),
     work: workOf(s), hygieneEvents: s.hygieneEvents || [], roadmapResponses: s.roadmapResponses, peerReview: s.peerReview, reflection: s.reflection, dataHandling: s.dataHandling,
-    messages: s.messages.map((m: any) => ({ ...(m.payload as object), id: m.key, unread: !m.openedAt })),
+    messages: (locked?[]:s.messages).map((m: any) => ({ ...(m.payload as object), id: m.key, unread: !m.openedAt })),
     // Never send unreleased event content or grading keys in applicant API responses.
-    track: { ...t, phases:t.phases.map(p=>({...p,instructions:p.id<=s.activePhase?p.instructions:undefined})), deliverables:t.deliverables.filter(d=>d.phaseId<=s.activePhase), exhibits:t.exhibits.filter(e=>!e.graderOnly&&(e.releaseSegment||1)<=s.activePhase), rubric: [], inboxMessages: s.messages.map((m:any) => ({ ...m.payload, id: m.key, unread: !m.openedAt })),
-      emergencyConstraint: s.activePhase >= (t.shockSegment || 3) ? t.emergencyConstraint : { title: 'Mid-scenario update', headline: '', indicators: [], memoRecipient: '', memoTimestamp: '', memoPoints: [], adaptationRequirement: '', mandatoryRevisions: [] },
+    track: { ...t, phases:t.phases.map(p=>({...p,instructions:p.id<=s.activePhase?p.instructions:undefined})), deliverables:t.deliverables.filter(d=>d.phaseId<=s.activePhase), exhibits:(locked?[]:t.exhibits).filter(e=>!e.graderOnly&&(e.releaseSegment||1)<=s.activePhase), rubric: [], inboxMessages: (locked?[]:s.messages).map((m:any) => ({ ...m.payload, id: m.key, unread: !m.openedAt })),
+      emergencyConstraint: !locked && s.activePhase >= (t.shockSegment || 3) ? t.emergencyConstraint : { title: 'Mid-scenario update', headline: '', indicators: [], memoRecipient: '', memoTimestamp: '', memoPoints: [], adaptationRequirement: '', mandatoryRevisions: [] },
       dataGate: t.dataGate ? { ...t.dataGate, fields: t.dataGate.fields.map(f => ({ ...f, ruleRationale: '', expectedAction: [] })) } : undefined,
     },
   };
@@ -44,6 +47,8 @@ export async function syncAssessment(user: User, raw: unknown) {
     await requireConsent(tx, s.id); assertActive(s);
     if (s.revision !== input.revision) throw new HttpError(409, 'This assessment changed in another tab. Reload before saving.');
     const t = s.scenarioSnapshot as unknown as TrackConfig;
+    if(isScreen(s))return publicSession(await syncScreen(tx,s,input));
+    if(input.screen)throw new HttpError(422,'Screen payload is not valid for Superday.');
     const data: any = { revision: { increment: 1 } };
     if(input.work) {assertWorkIdentity(input.work as import("../src/types/work").AssessmentWork,workOf(s),s.activePhase,t);
       for(const v of input.work.verifications.filter(v=>v.source)){

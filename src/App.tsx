@@ -12,6 +12,7 @@ import {
   PeerReviewResponse,
   DeliverableResponse,
 } from './types';
+import {ScreenApp} from './components/revised/ScreenApp';
 import {SimulationApp as RevisedSimulationApp} from './components/revised/SimulationApp';
 import { api, AssessmentClient } from './services/api';
 import { LegalConsentModal } from './components/legal/LegalConsentModal';
@@ -107,6 +108,7 @@ function CandidateAssessment({ demo = false }: { demo?: boolean }) {
   if(!trackId) return <><PracticeTracks onAssigned={id => { api('/tracks').then(setTracks).catch(e => setError(e.message)); void load(id as TrackId); }} /><TrackSelectionView tracks={tracks} onSelectTrack={load}/></>;
   if(!session) return <p role="status" className="p-8">Loading assigned assessment…</p>;
   if(!session.consented) return <LegalConsentModal sessionId={session.id} policy={identity.policy} ready={identity.enrollmentReady ?? identity.governanceReady} onAccepted={() => load(trackId)}/>;
+  if(session.track.assessmentType==='AIMI_SCREEN')return <ScreenApp key={session.id} initialSession={session} onSwitch={()=>{setTrackId(null);setSession(null);api('/tracks').then(setTracks).catch(e=>setError(e.message));}}/>;
   if(session.track.designVersion===2)return <RevisedSimulationApp key={session.id} initialSession={session} onSwitch={()=>{setTrackId(null);setSession(null);api('/tracks').then(setTracks).catch(e=>setError(e.message));}}/>;
   return <SimulationApp key={session.id} initialSession={session} onSwitch={() => { setTrackId(null); setSession(null); api('/tracks').then(setTracks).catch(e=>setError(e.message)); }}/>;
 }

@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,access} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+const mode=process.argv.find(a=>a.startsWith('--mode='))?.slice(7)||'superday';
+if(!['superday','screen'].includes(mode))throw new Error('Mode must be superday or screen');
+if(mode==='screen'){await import('./.live-screen-smoke.mjs');process.exit(0);}
 // Explicit opt-in: this probe creates disposable accounts and assessment sessions.
 // SMOKE_STATE_DIR resumes an interrupted probe; its private files contain sessions.
 if(process.env.LIVE_SMOKE_ALLOW_WRITES!=='true')throw new Error('Set LIVE_SMOKE_ALLOW_WRITES=true to create disposable workflow test records.');
@@ -25,7 +28,7 @@ for(const [role,key,route] of [['candidate','','assessment'],['grader','GRADER20
  await page.goto(base+'/auth/signup');await page.getByLabel('Full Name').fill('AIMI disposable assignment verification '+role);await page.getByLabel('Email Address').fill(emailFor(role));await page.getByLabel('Password',{exact:true}).fill(randomBytes(24).toString('base64url'));await page.getByLabel('Access Key / Invite Code (Optional)').fill(key);await page.getByRole('button',{name:'Create account'}).click();await page.waitForURL('**/'+route);console.log('PASS signup '+role);
 }
 const {admin,candidate,grader}=pages;
-const catalog=await api(admin,'/catalog');assert.equal(catalog.data.length,4);
+const catalog=await api(admin,'/catalog');assert.ok(catalog.data.length>=4);assert.equal(catalog.data.filter(t=>t.assessmentType==='AIMI_SCREEN').length,4);
 const peopleResponse=await api(admin,'/admin/people');assert.equal(peopleResponse.status,200,JSON.stringify(peopleResponse));const people=peopleResponse.data;const c=people.find(p=>p.email===emailFor('candidate')),g=people.find(p=>p.email===emailFor('grader'));assert.ok(c&&g);
 const certification=await api(admin,'/admin/graders/'+g.id+'/certify',{confirmed:true});assert.equal(certification.status,200,JSON.stringify(certification));
 await admin.getByRole('button',{name:'Refresh people and tracks'}).click();
