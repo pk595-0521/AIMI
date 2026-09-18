@@ -1,30 +1,35 @@
 services:
   - type: web
-    name: aimi-superday
+    name: AIMI
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
+    region: virginia
+    repo: https://github.com/pk595-0521/AIMI
+    branch: main
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build
+    startCommand: pnpm run start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: "10000"
-           - key: DATABASE_URL
-             sync: false
-           - key: SUPABASE_DATABASE_URL
-             sync: false
-           - key: NEXT_PUBLIC_SUPABASE_URL
-             sync: false
-           - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
-             sync: false
-           - key: SUPABASE_SERVICE_ROLE_KEY
-             sync: false
-           - key: LLM_API_KEY
-             sync: false
-           - key: APP_ORIGIN
-             sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_DATABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        sync: false
+      - key: APP_ORIGIN
+        sync: false
       - key: AUTH_JWKS_URL
         sync: false
       - key: AUTH_ISSUER
@@ -40,4 +45,4 @@ services:
       - key: AI_CONTRACT_REFERENCE
         sync: false
       - key: AI_ZERO_TRAINING_VERIFIED
-        value: "false"
+        sync: false

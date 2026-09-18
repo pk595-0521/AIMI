@@ -1,3 +1,5 @@
+import {isScreen,assertScreenAnalysis,refreshScreenClock} from './screen-workflow';
+import {effectiveScreenCaps,scoreScreen} from '../src/screen-scoring';
 import {copilot} from './copilot';
 import {validateArtifact} from './artifacts';
 import { raw, Router, type Request, type Response, type NextFunction } from 'express';
@@ -39,9 +41,10 @@ api.get('/tracks', handler(async (req,res) => {
 api.get('/assessment', handler(async (req,res) => {
   if (!canAccessPortal(req.user.role, 'assessment')) throw new HttpError(403, 'Candidate access required');
   const trackId = z.string().parse(req.query.trackId);
-  const s = await db.assessmentSession.findFirst({ where: { archivedAt: null, applicantId: req.user.id, organizationId: req.user.organizationId, trackId }, orderBy: { createdAt: 'desc' }, include: { nodes: true, messages: true } });
+  let s = await db.assessmentSession.findFirst({ where: { archivedAt: null, applicantId: req.user.id, organizationId: req.user.organizationId, trackId }, orderBy: { createdAt: 'desc' }, include: { nodes: true, messages: true } });
   if (!s) throw new HttpError(404, 'No assessment has been assigned for this track');
   const consent = await db.legalConsent.findUnique({ where: { sessionId_policyVersion: { sessionId: s.id, policyVersion: policy.version } } });
+  if(consent)s=await refreshScreenClock(db,s);
   if (consent && s.status === 'ACTIVE' && s.phaseDeadlineAt.getTime() <= Date.now()) {
     await db.assessmentSession.updateMany({ where: { id: s.id, status: 'ACTIVE', phaseDeadlineAt: { lte: new Date() } }, data: { status: 'EXPIRED', submittedAt: s.phaseDeadlineAt, revision: { increment: 1 } } });
     const expired = await ownedSession(db, s.id, req.user);
@@ -63,7 +66,7 @@ api.post('/legal/consent', handler(async (req,res) => {
       await tx.legalConsent.create({ data: { ...input, userId: req.user.id, policyDigest, ipAddress: req.ip || 'unknown', userAgent: (req.get('user-agent') || 'unknown').slice(0,2000) } });
       const t = s.scenarioSnapshot as unknown as TrackConfig;
       // First consent starts the timer; repeat consent cannot reset it.
-      if (!await tx.legalConsent.count({ where: { sessionId: s.id, policyVersion: { not: policy.version } } })) await tx.assessmentSession.update({ where: { id: s.id }, data: { phaseStartedAt: new Date(), phaseDeadlineAt: new Date(Date.now() + t.phases[0].durationSeconds * 1000) } });
+      if (!await tx.legalConsent.count({ where: { sessionId: s.id, policyVersion: { not: policy.version } } })) await tx.assessmentSession.update({ where: { id: s.id }, data: { ...(isScreen(s)?{screenStartedAt:new Date()}:{}), phaseStartedAt: new Date(), phaseDeadlineAt: new Date(Date.now() + (isScreen(s)?2400:t.phases[0].durationSeconds) * 1000) } });
     }
   });
   res.status(201).json({ accepted: true, policyVersion: policy.version });
@@ -85,6 +88,7 @@ api.post(['/prompt/log','/copilot'], rateLimit({ windowMs: 60000, limit: 12, key
     }
     if (await tx.promptLog.count({ where: { sessionId: s.id, status: 'PENDING' } })) throw new HttpError(409,'A Copilot request is already pending');
     const t = s.scenarioSnapshot as unknown as TrackConfig;
+    assertScreenAnalysis(s);
     if (t.dataGate && !s.dataHandling) throw new HttpError(403,'Complete the data hygiene gate before AI use');
     const pii=unsafePrompt(input.prompt,t);
     if(pii.length){await tx.assessmentSession.update({where:{id:s.id},data:{hygieneEvents:json([...(s.hygieneEvents as any[]||[]),{type:'BLOCKED_PII',phase:s.activePhase,at:new Date().toISOString(),fields:pii}])}});return {blocked:true,previous:null,session:s,log:null};}
@@ -112,9 +116,10 @@ api.post(['/prompt/log','/copilot'], rateLimit({ windowMs: 60000, limit: 12, key
 }));
 
 async function reviewAccess(req: AuthRequest, sessionId: string) {
-  const s = await db.assessmentSession.findFirst({ where: { id: sessionId, ...(req.user.role === 'SYSTEM_ADMIN' ? {} : { organizationId: req.user.organizationId }) }, include: { nodes: true, checkpoints: { orderBy: { createdAt: 'asc' } } } });
+  let s = await db.assessmentSession.findFirst({ where: { id: sessionId, ...(req.user.role === 'SYSTEM_ADMIN' ? {} : { organizationId: req.user.organizationId }) }, include: { nodes: true, checkpoints: { orderBy: { createdAt: 'asc' } } } });
   if (!s || req.user.role === 'APPLICANT') throw new HttpError(404,'Assessment not found');
   if (req.user.role === 'GRADER' && !await db.evaluation.findUnique({ where: { sessionId_graderId: { sessionId, graderId: req.user.id } } })) throw new HttpError(403,'Grader is not assigned to this assessment');
+  if(isScreen(s)){await refreshScreenClock(db,s);s=await db.assessmentSession.findUniqueOrThrow({where:{id:sessionId},include:{nodes:true,checkpoints:{orderBy:{createdAt:'asc'}}}});}
   return s;
 }
 api.get('/grader/sessions', handler(async (req,res) => {
@@ -135,15 +140,20 @@ api.get('/grader/:sessionId/prompts', handler(async (req,res) => {
 api.post('/grader/:sessionId/evaluation', handler(async (req,res) => {
   const id = z.string().uuid().parse(req.params.sessionId); await reviewAccess(req,id);
   if (req.user.role !== 'GRADER' || !req.user.certifiedGrader) throw new HttpError(403,'Only assigned certified human graders may score assessments');
-  const input = z.object({ revision: z.number().int().nonnegative(), scores: z.record(z.string(),z.object({ score: z.number().int().nonnegative(), notes: z.string().trim().min(1).max(10000) })), feedback: z.string().trim().min(1).max(30000), planningCapApplied: z.boolean(), humanDecision: z.string().trim().min(1).max(2000), finalize: z.boolean() }).strict().parse(req.body);
+  const input = z.object({ revision: z.number().int().nonnegative(), scores: z.record(z.string(),z.object({ score: z.number().int().nonnegative(), notes: z.string().trim().min(1).max(10000) })), feedback: z.string().trim().min(1).max(30000), planningCapApplied: z.boolean(), humanDecision: z.string().trim().min(1).max(2000), finalize: z.boolean(), screenCaps:z.object({privacyLeak:z.boolean(),gateFailure:z.boolean(),pmBroadLaunch:z.boolean(),shockNonAdaptation:z.boolean(),missingVisual:z.boolean(),consultingUnsafeExpansion:z.boolean(),ibMissingDownside:z.boolean(),calibrationNo:z.number().int().min(0).max(3),evidence:z.string().max(10000)}).strict().optional() }).strict().parse(req.body);
   const result = await db.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "AssessmentSession" WHERE id = ${id}::uuid FOR UPDATE`;
     const s = await tx.assessmentSession.findUniqueOrThrow({ where: { id } });
     if(s.archivedAt)throw new HttpError(409,'Archived assessments cannot be scored');
     if (s.status === 'ACTIVE') throw new HttpError(409,'Wait until the assessment is submitted');
     const criteria = s.rubricSnapshot as any[];
-    const total = scoreRubric(criteria,input.scores,input.planningCapApplied && s.scenarioVersion===1 && s.trackId === 'product-management',sessionHygiene(s).hygiene_multiplier);
-    const result = await tx.evaluation.updateMany({ where: { sessionId: id, graderId: req.user.id, revision: input.revision, finalizedAt: null }, data: { scores: json(input.scores), feedback: input.feedback, planningCapApplied: input.planningCapApplied, humanDecision: input.humanDecision, overallScore: total, revision: { increment: 1 }, finalizedAt: input.finalize ? new Date() : null } });
+    const screen=isScreen(s);
+    if(screen&&!input.screenCaps)throw new HttpError(422,'Complete the Screen cap and calibration review.');
+    if(screen&&Object.entries(input.screenCaps!).some(([k,v])=>typeof v==='boolean'&&v)&&!input.screenCaps!.evidence.trim())throw new HttpError(422,'Cite evidence for hard-cap findings.');
+    const caps=screen?effectiveScreenCaps(s,input.screenCaps):null;
+    const validated = scoreRubric(criteria,input.scores,input.planningCapApplied && s.scenarioVersion===1 && s.trackId === 'product-management',screen?1:sessionHygiene(s).hygiene_multiplier);
+    const total=screen?scoreScreen(input.scores,caps!, (s.scenarioSnapshot as any).id).total:validated;
+    const result = await tx.evaluation.updateMany({ where: { sessionId: id, graderId: req.user.id, revision: input.revision, finalizedAt: null }, data: { ...(caps?{screenCaps:json(caps)}:{}), scores: json(input.scores), feedback: input.feedback, planningCapApplied: input.planningCapApplied, humanDecision: input.humanDecision, overallScore: total, revision: { increment: 1 }, finalizedAt: input.finalize ? new Date() : null } });
     if (result.count !== 1) throw new HttpError(409,'Evaluation changed or was finalized');
     return { overallScore: total, revision: input.revision + 1 };
   }); res.json(result);
@@ -175,7 +185,7 @@ api.post('/grader/:sessionId/advisory',handler(async(req,res)=>{
  if(process.env.ENABLE_LLM_GRADING==='true'){
   if(!governanceReady()||!process.env.GEMINI_API_KEY||!process.env.GEMINI_MODEL)throw new HttpError(503,'Approved grading provider is not configured');
   const t=s.scenarioSnapshot as unknown as TrackConfig;
-  const payload=JSON.stringify({work:s.work,drafts:s.drafts,checkpoints:s.checkpoints});
+  const payload=JSON.stringify({work:s.work,drafts:s.drafts,checkpoints:s.checkpoints,...(isScreen(s)?{finalDeliverable:s.finalDeliverable,branchingDecision:s.branchingDecision,scratchpad:s.scratchpad,hygieneEvents:s.hygieneEvents}:{})});
   if(unsafePrompt(payload,t).length)throw new HttpError(422,'Candidate evidence contains sensitive identifiers. Use human-only review.');
   const safeScenario={...t,exhibits:t.exhibits.filter(e=>e.type!=='dataset')};
   const ai=new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY,httpOptions:{timeout:45000}});
@@ -183,7 +193,8 @@ api.post('/grader/:sessionId/advisory',handler(async(req,res)=>{
   const parsed=z.object({criteria:z.array(z.object({id:z.string(),score:z.number().int().nonnegative(),evidenceRefs:z.array(z.string()).min(1),reason:z.string().min(1)})),uncertainties:z.array(z.string())}).parse(JSON.parse(output.text||'{}'));
   const criteria=s.rubricSnapshot as any[];
   if(parsed.criteria.length!==criteria.length||new Set(parsed.criteria.map(c=>c.id)).size!==criteria.length||parsed.criteria.some(c=>!criteria.some(r=>r.id===c.id&&c.score<=r.maxScore)))throw new HttpError(502,'Grading provider returned an invalid rubric');
-  const rawScore=scoreRubric(criteria,Object.fromEntries(parsed.criteria.map(c=>[c.id,{score:c.score,notes:c.reason}])),false,sessionHygiene(s).hygiene_multiplier);
+  const modelScores=Object.fromEntries(parsed.criteria.map(c=>[c.id,{score:c.score,notes:c.reason}]));
+  const rawScore=isScreen(s)?scoreScreen(modelScores,effectiveScreenCaps(s),(s.scenarioSnapshot as any).id).total:scoreRubric(criteria,modelScores,false,sessionHygiene(s).hygiene_multiplier);
   modelReview={...parsed,model:process.env.GEMINI_MODEL,rawScore,adjustedScore:Math.max(0,rawScore-rules.totalPenalty)};
  }
  const advisory={...rules,modelReview};
@@ -195,7 +206,7 @@ api.get('/employer/:sessionId/report',handler(async(req,res)=>{
  if(!['EMPLOYER_ADMIN','SYSTEM_ADMIN','GRADER'].includes(req.user.role))throw new HttpError(403,'Report access required');
  const prompts=await db.promptLog.findMany({where:{sessionId:id},orderBy:{createdAt:'asc'}});
  const evaluations=await db.evaluation.findMany({where:{sessionId:id,finalizedAt:{not:null}}});
- res.json({generatedAt:new Date().toISOString(),sessionId:id,track:s.trackId,status:s.status,...sessionHygiene(s),work:s.work,deliverables:s.drafts,dataHandling:s.dataHandling,hygieneEvents:s.hygieneEvents,prompts,checkpoints:s.checkpoints,evidence:evaluationEvidence(s),evaluations});
+ res.json({generatedAt:new Date().toISOString(),sessionId:id,track:s.trackId,status:s.status,assessmentType:s.assessmentType,finalDeliverable:s.finalDeliverable,branchingDecision:s.branchingDecision,scratchpad:s.scratchpad,shockTriggeredAt:s.shockTriggeredAt,...sessionHygiene(s),work:s.work,deliverables:s.drafts,dataHandling:s.dataHandling,hygieneEvents:s.hygieneEvents,prompts,checkpoints:s.checkpoints,evidence:evaluationEvidence(s),evaluations});
 }));
 
 api.use((_req,res) => res.status(404).json({ error: 'API route not found' }));

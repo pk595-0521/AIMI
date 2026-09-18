@@ -11,6 +11,7 @@ export function scoreHygiene(track: TrackConfig, rows: {fieldName:string;action:
   return {raw_hygiene_score:{correct,total:fields.length},hygiene_multiplier:correct/fields.length};
 }
 export function sessionHygiene(s:any) {
+  if(s.scenarioSnapshot.assessmentType==='AIMI_SCREEN'){const last=(s.hygieneEvents||[]).filter((e:any)=>e.type==='SCREEN_HYGIENE_ATTEMPT').at(-1);return {raw_hygiene_score:last?.raw_hygiene_score||null,hygiene_multiplier:s.dataHandling?1:0};}
   const recorded = (s.hygieneEvents || []).find((e:any)=>e.type==='HYGIENE_SUBMITTED');
   if (recorded) return {raw_hygiene_score:recorded.raw_hygiene_score,hygiene_multiplier:recorded.hygiene_multiplier};
   // Legacy successful attempts are scored against their assigned snapshot.

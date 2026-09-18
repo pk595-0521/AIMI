@@ -17,7 +17,7 @@ try{
  await pg.initialise();await pg.start();await pg.createDatabase('aimi_test');
  process.env.DATABASE_URL=`postgresql://aimi_test:local-test-only@127.0.0.1:${port}/aimi_test`;
  const client=pg.getPgClient('aimi_test');await client.connect();
- for(const migration of ['202609100001_initial','202609100002_revised_design','20260913021939_archive_assessments'])await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`,'utf8'));
+ for(const migration of ['202609100001_initial','202609100002_revised_design','20260913021939_archive_assessments','202609140001_aimi_screen'])await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`,'utf8'));
  await client.query('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role');
  await client.query(await readFile('supabase/migrations/20260912213026_copilot_audit_logs_view.sql','utf8'));
  await client.query('CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text)');await client.end();
@@ -34,8 +34,8 @@ try{
  let lastSession:any;
  const stableJson=(value:any)=>JSON.parse(JSON.stringify(value,(_key,v)=>typeof v==='number'?Number(v.toPrecision(14)):v));
  const {seedCatalog}=await import('../server/catalog');await seedCatalog();await seedCatalog();
- assert.equal(await db.assessmentTrack.count(),4);
- const catalog=await call(applicant,'/catalog');assert.equal(catalog.length,4);assert.ok(catalog.every((t:any)=>!t.exhibits&&!t.rubric&&!t.emergencyConstraint.memoPoints));
+ assert.equal(await db.assessmentTrack.count(),8);
+ const catalog=await call(applicant,'/catalog');assert.equal(catalog.length,8);assert.ok(catalog.every((t:any)=>!t.exhibits&&!t.rubric&&!t.emergencyConstraint.memoPoints));
  await call(applicant,'/admin/people',undefined,403);
  const people=await call(employer,'/admin/people');assert.ok(people.some((p:any)=>p.id===applicant.id));assert.ok(!people.some((p:any)=>p.id===outsider.id));
  await call(employer,'/admin/assignments',{candidateId:outsider.id,trackId:'consulting-v2'},404);
@@ -46,6 +46,40 @@ try{
  await call(applicant,`/admin/graders/${trainee.id}/certify`,{confirmed:true},403);
  await call(employer,`/admin/graders/${trainee.id}/certify`,{confirmed:true});
  assert.equal((await db.user.findUniqueOrThrow({where:{id:trainee.id}})).certifiedGrader,true);
+
+ const {SCREEN_TRACKS,SCREEN_SECTIONS,SCREEN_RUBRIC}=await import('../src/data/screen');
+ for(const t of SCREEN_TRACKS){
+  const candidate=await user('APPLICANT','screen-'+t.id);
+  const assigned=await call(employer,'/admin/assignments',{candidateId:candidate.id,trackId:t.id+'-screen-v1',assessmentType:'AIMI_SCREEN',graderId:grader.id},201);
+  await call(candidate,'/legal/consent',{sessionId:assigned.sessionId,policyVersion:policy.version,monitoringAccepted:true,zeroRetrainingAccepted:true,humanReviewAccepted:true},201);
+  let s=await call(candidate,'/assessment?trackId='+assigned.trackId);
+  assert.equal(s.track.exhibits.length,0);assert.equal(s.phase,1);
+  const command=async(action:string,extra:any={},expected=200)=>{const r=await call(candidate,'/assessment/sync',{sessionId:s.id,revision:s.revision,action,...extra},expected);if(expected===200)s=r;return r;};
+  const decisions=t.dataGate!.fields.map(f=>({fieldName:f.fieldName,action:f.expectedAction[0],rationale:'Classify safely'}));
+  await command('data-handling',{dataHandling:decisions.map(d=>({...d,action:'use-as-is'}))});assert.equal(s.dataHandling,null);assert.equal(s.track.exhibits.length,0);
+  await call(candidate,'/copilot/chat',{assessment_id:s.id,track_id:t.id,segment_id:1,request_id:crypto.randomUUID(),purpose:'test',messages:[{role:'user',content:'Analyze this case'}]},403);
+  await command('data-handling',{dataHandling:decisions});assert.ok(s.dataHandling);assert.equal(s.track.exhibits.length,0);
+  await command('save',{screen:{scratchpad:'Too early'}},403);
+  const originTime=new Date(Date.now()-301000);await db.assessmentSession.update({where:{id:s.id},data:{screenStartedAt:originTime,phaseDeadlineAt:new Date(originTime.getTime()+2400000)}});
+  s=await call(candidate,'/assessment?trackId='+assigned.trackId);assert.equal(s.phase,2);assert.equal(s.track.exhibits.length,2);assert.equal(s.track.emergencyConstraint.memoPoints.length,0);
+  const branchingDecision={selectedOption:'2',rationale:'Targeted intervention',rejectedAlternatives:'Broad scope violates constraints',dependencies:'Validate available resources',owner:'Executive sponsor',timing:'Within one day',triggerThreshold:'Reverse if failure exceeds 5%'};
+  await command('save',{screen:{scratchpad:'Saved analysis',finalDeliverable:'Pre-shock memo',branchingDecision}});
+  await command('advance',{},409);
+  const shockTime=new Date(Date.now()-1201000);await db.assessmentSession.update({where:{id:s.id},data:{screenStartedAt:shockTime,phaseDeadlineAt:new Date(shockTime.getTime()+2400000)}});
+  s=await call(candidate,'/assessment?trackId='+assigned.trackId);assert.equal(s.phase,3);assert.ok(s.shockTriggeredAt);assert.ok(s.messages.some((m:any)=>m.isEmergency));assert.equal(s.scratchpad,'Saved analysis');
+  await call(candidate,'/assessment?trackId='+assigned.trackId);assert.equal(await db.phaseCheckpoint.count({where:{sessionId:s.id,phase:2}}),1);
+  await command('save',{screen:{branchingDecision:{...branchingDecision,selectedOption:'1'}}},409);
+  const memo=SCREEN_SECTIONS.map((title,i)=>'## '+title+'\n\n'+(i===4?'| Choice | Value |\n| --- | --- |\n| Reallocate | 167 |':'Post-shock evidence, risk thresholds, owner and confidence.')).join('\n\n');
+  await command('advance',{screen:{finalDeliverable:memo}});assert.equal(s.status,'SUBMITTED');
+  const record=await call(grader,'/grader/'+s.id);assert.equal(record.finalDeliverable,memo);assert.equal(record.checkpoints[0].snapshot.finalDeliverable,'Pre-shock memo');
+  const scores=Object.fromEntries(SCREEN_RUBRIC.map(c=>[c.id,{score:c.maxScore,notes:'Reviewed evidence'}]));
+  const {EMPTY_SCREEN_CAPS}=await import('../src/screen-scoring');
+  const grade=await call(grader,'/grader/'+s.id+'/evaluation',{revision:0,scores,feedback:'Review completed',humanDecision:'Further interview',planningCapApplied:false,finalize:true,screenCaps:{...EMPTY_SCREEN_CAPS,pmBroadLaunch:t.id==='product-management',evidence:'Post-shock recommendation retains launch'}});
+  assert.equal(grade.overallScore,t.id==='product-management'?50:100);
+  await command('save',{screen:{scratchpad:'Cannot alter after submission'}},409);
+  await call(outsider,'/grader/'+s.id,undefined,404);
+ }
+ const screenAnalytics=await call(employer,'/admin/screen-analytics');assert.equal(screenAnalytics.sampleSize,4);assert.equal(screenAnalytics.graded.length,4);
  for(const t of TRACK_LIST){
   (await import('../server/copilot')).copilotLimit.resetKey(applicant.id);
   const registry=await db.assessmentTrack.findUniqueOrThrow({where:{id:t.id+'-v2'}});assert.deepEqual(stableJson(registry.scenario),stableJson(t));

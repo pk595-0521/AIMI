@@ -29,9 +29,10 @@ const adminPage=await browser.newPage({viewport:{width:1440,height:1000}});
 let assignmentSent=false;
 await adminPage.route('**/api/**',async route=>{
  const url=new URL(route.request().url());let data:any=[];
+ if(url.pathname==='/api/admin/screen-analytics')data={sampleSize:0,limit:500,passedSessions:0,passedAttempts:0,failedAttempts:0,gateAttempts:0,graded:[]};
  if(url.pathname==='/api/catalog')data=TRACK_LIST.map(t=>({id:t.id+'-v2',title:t.title,companyName:t.companyName}));
  if(url.pathname==='/api/admin/people')data=[{id:'candidate-fixture',name:'Case Tester',email:'case@example.test',role:'APPLICANT'},{id:'grader-fixture',name:'Reviewer',role:'GRADER',certifiedGrader:true}];
- if(url.pathname==='/api/admin/assignments'){assert.deepEqual(route.request().postDataJSON(),{trackId:'consulting-v2',candidateId:'candidate-fixture',graderId:'grader-fixture'});assignmentSent=true;data={sessionId:'assigned-fixture'};}
+ if(url.pathname==='/api/admin/assignments'){assert.deepEqual(route.request().postDataJSON(),{assessmentType:'AIMI_SUPERDAY',trackId:'consulting-v2',candidateId:'candidate-fixture',graderId:'grader-fixture'});assignmentSent=true;data={sessionId:'assigned-fixture'};}
  await route.fulfill({json:data});
 });
 await adminPage.goto(base+'/demo/employer');
@@ -51,7 +52,8 @@ for(const track of TRACK_LIST){
   const req=route.request(),url=new URL(req.url()),body=req.method()==='POST'?req.postDataJSON():null;let data:any={};
   if(url.pathname==='/api/me')data={role:'APPLICANT',policy,governanceReady:true};
   else if(url.pathname==='/api/tracks')data=[{...track,id:track.id+'-v2'}];
-  else if(url.pathname==='/api/catalog')data=[{...track,id:track.id+'-v2'}];
+  else if(url.pathname==='/api/admin/screen-analytics')data={sampleSize:0,limit:500,passedSessions:0,passedAttempts:0,failedAttempts:0,gateAttempts:0,graded:[]};
+ if(url.pathname==='/api/catalog')data=[{...track,id:track.id+'-v2'}];
   else if(url.pathname==='/api/practice'){assert.equal(body.trackId,track.id+'-v2');data={sessionId:raw.id,trackId:raw.trackId};}
   else if(url.pathname==='/api/legal/consent'){consent=true;data={accepted:true};}
   else if(url.pathname==='/api/assessment')data=consent?{...publicSession(raw),consented:true}:{id:raw.id,consented:false};

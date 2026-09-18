@@ -11,6 +11,10 @@ enum Role {
   EMPLOYER_ADMIN
   SYSTEM_ADMIN
 }
+enum AssessmentType {
+  AIMI_SUPERDAY
+  AIMI_SCREEN
+}
 enum SessionStatus {
   ACTIVE
   SUBMITTED
@@ -62,6 +66,13 @@ model AssessmentTrack {
   sessions AssessmentSession[]
 }
 model AssessmentSession {
+  assessmentType AssessmentType @default(AIMI_SUPERDAY)
+  screenStartedAt DateTime?
+  dataHygieneSelections Json?
+  branchingDecision Json?
+  shockTriggeredAt DateTime?
+  finalDeliverable String?
+  scratchpad String?
   id String @id @default(uuid()) @db.Uuid
   applicantId String @db.Uuid
   applicant User @relation(fields: [applicantId], references: [id])
@@ -178,6 +189,7 @@ model RubricCriterion {
   @@unique([trackId, key])
 }
 model Evaluation {
+  screenCaps Json?
   id String @id @default(uuid()) @db.Uuid
   sessionId String @db.Uuid
   session AssessmentSession @relation(fields: [sessionId], references: [id])

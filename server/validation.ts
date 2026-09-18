@@ -17,6 +17,7 @@ export const nodeSchema = z.object({
 export const syncSchema = z.object({
   sessionId: z.string().uuid(), revision: z.number().int().nonnegative(),
   work: workSchema.optional(),
+  screen: z.record(z.string(),z.unknown()).optional(),
   action: z.enum(['save','advance','open-message','peer-review','data-handling']),
   drafts: z.record(z.string().max(100), z.object({ id: z.string().max(100), value: z.string().max(50000), lastUpdated: z.string().optional() })).optional(),
   nodes: z.array(nodeSchema).max(100).optional(),
