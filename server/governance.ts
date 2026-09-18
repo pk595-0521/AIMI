@@ -14,6 +14,9 @@ export function sanitizedContext(t:TrackConfig,phase:number,decisions:any[]) {
  // Incorrect classifications affect scoring, never permission to disclose data.
  decisions=decisions.map(d=>({...d,action:t.dataGate?.fields.find(f=>f.fieldName===d.fieldName)?.expectedAction.includes(d.action)?d.action:'exclude'}));
  const exhibits=t.exhibits.filter(e=>!e.graderOnly&&(e.releaseSegment||1)<=phase).map(e=>{
+  // Screen exhibits are curated operational facts rather than row-level
+  // customer data. Preserve their full table payload for Copilot context.
+  if(t.assessmentType==='AIMI_SCREEN')return {id:e.id,title:e.title,content:e.content,columns:e.tableColumns,rows:e.tableRows};
   if(e.type!=='dataset')return {id:e.id,title:e.title,content:e.content};
   const rows=(e.tableRows||[]).map(row=>Object.fromEntries((t.dataGate?.fields||[]).flatMap(f=>{
    if(!(f.fieldName in row))return [];

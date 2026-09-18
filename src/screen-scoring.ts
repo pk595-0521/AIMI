@@ -19,9 +19,11 @@ export function screenMemoProblems(memo:string) {
 }
 export function effectiveScreenCaps(s:any, flags:Partial<ScreenCaps>={}):ScreenCaps {
  const events=s.hygieneEvents||[];
+ const gateAttempts=events.filter((e:any)=>e.type==='SCREEN_HYGIENE_ATTEMPT');
+ const finalGate=gateAttempts.at(-1);
  return {...EMPTY_SCREEN_CAPS,...flags,
  privacyLeak:!!flags.privacyLeak||events.some((e:any)=>e.type==='PII_DISCLOSED'),
- gateFailure:!!flags.gateFailure||!s.dataHandling||events.some((e:any)=>e.type==='SCREEN_GATE_DEADLINE_MISSED'),
+ gateFailure:!!flags.gateFailure||!s.dataHandling||events.some((e:any)=>e.type==='SCREEN_GATE_DEADLINE_MISSED')||!!(s.dataHandling&&finalGate&&!finalGate.passed),
  missingVisual:!!flags.missingVisual||countScreenVisuals(s.finalDeliverable||'')===0};
 }
 export function scoreScreen(scores:Record<string,{score:number;notes?:string}>,caps:ScreenCaps,track:string) {

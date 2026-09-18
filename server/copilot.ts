@@ -41,7 +41,7 @@ export async function* groqStream(messages:any[],signal:AbortSignal,request:type
 export const copilot=Router();
 copilot.get('/copilot/config',(_req,res)=>res.json({model:GROQ_MODEL,provider:'Groq Cloud'}));
 export const copilotLimit=rateLimit({windowMs:60000,limit:12,keyGenerator:req=>(req as AuthRequest).user.id,message:{error:'Copilot is temporarily rate-limited. Please wait a minute.'}});
-copilot.post('/copilot/chat',copilotLimit,(req,res,next)=>{void(async()=>{
+copilot.post(['/copilot/chat','/assessment/chat'],copilotLimit,(req,res,next)=>{void(async()=>{
  const input=chatInput.parse(req.body),user=(req as AuthRequest).user;
  if(input.messages.at(-1)!.role!=='user')throw new HttpError(422,'The final message must be a candidate question');
  const prompt=input.messages.at(-1)!.content;
