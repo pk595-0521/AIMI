@@ -91,3 +91,15 @@ button:disabled { cursor: not-allowed; }
 .work-prose table { min-width:360px; }
 .work-prose th,.work-prose td { min-width:100px; overflow-wrap:break-word; word-break:normal; }
 .work-prose a { text-decoration:underline; }
+
+/* AIMI Screen keeps the Superday light workspace palette even where legacy
+   utility classes remain in the compact candidate shell. */
+.screen-app .bg-zinc-950 { background-color:#fff !important; }
+.screen-app .bg-zinc-900 { background-color:#f8fafc !important; }
+.screen-app .bg-zinc-900\/60 { background-color:#f8fafc !important; }
+.screen-app .border-zinc-800,.screen-app .border-zinc-700 { border-color:#cbd5e1 !important; }
+.screen-app .text-zinc-100,.screen-app .text-zinc-200,.screen-app .text-zinc-300 { color:#0f172a !important; }
+.screen-app .text-zinc-400,.screen-app .text-zinc-500 { color:#64748b !important; }
+.screen-app .hover\:bg-zinc-800:hover { background-color:#f1f5f9 !important; }
+.screen-app .bg-zinc-100 { background-color:#0f172a !important; color:#fff !important; }
+.screen-app .bg-neutral-900 { background-color:#f1f5f9 !important; color:#0f172a !important; }

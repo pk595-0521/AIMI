@@ -1,4 +1,4 @@
-import { isScreen,refreshScreenClock,syncScreen } from './screen-workflow';
+import { isScreen,refreshScreenClock,syncScreen,screenGateState } from './screen-workflow';
 import { Prisma } from '@prisma/client';
 import { db } from './db';
 import { HttpError, syncSchema } from './validation';
@@ -25,7 +25,7 @@ export function publicSession(s: any) {
   const t = s.scenarioSnapshot as unknown as TrackConfig;
   const locked=isScreen(s)&&(!s.dataHandling||s.activePhase<2);
   return {
-    assessmentType:s.assessmentType,screenStartedAt:s.screenStartedAt,shockTriggeredAt:s.shockTriggeredAt,finalDeliverable:s.finalDeliverable,scratchpad:s.scratchpad,branchingDecision:s.branchingDecision,dataHygieneSelections:s.dataHygieneSelections,
+    assessmentType:s.assessmentType,screenStartedAt:s.screenStartedAt,shockTriggeredAt:s.shockTriggeredAt,finalDeliverable:s.finalDeliverable,scratchpad:s.scratchpad,branchingDecision:s.branchingDecision,dataHygieneSelections:s.dataHygieneSelections,screenGate:isScreen(s)?screenGateState(s):undefined,
     id: s.id, trackId: s.trackId, revision: s.revision, phase: s.activePhase, ...sessionHygiene(s),
     deadline: s.phaseDeadlineAt.toISOString(), status: s.status,
     drafts: s.drafts, nodes: s.nodes.map((n: any) => ({ ...n, id: n.key, phaseId: n.phase, position: { x: n.positionX, y: n.positionY }, owner:n.owner||'',dependencies:n.dependencies||'',targetMilestone:n.targetMilestone||'',triggerThreshold:n.triggerThreshold||'' })),

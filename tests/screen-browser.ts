@@ -19,7 +19,7 @@ try{
    if(url.pathname==='/api/assessment/sync'){
     assert.equal(body.revision,raw.revision);raw.revision++;
     if(body.screen)Object.assign(raw,body.screen);
-    if(body.action==='data-handling'){const passed=scoreHygiene(t,body.dataHandling).hygiene_multiplier===1;raw.hygieneEvents.push({type:'SCREEN_HYGIENE_ATTEMPT',passed,decisions:body.dataHandling});if(passed)raw.dataHandling=body.dataHandling;}
+   if(body.action==='data-handling'){const score=scoreHygiene(t,body.dataHandling),passed=score.hygiene_multiplier===1;raw.hygieneEvents.push({type:'SCREEN_HYGIENE_ATTEMPT',passed,raw_hygiene_score:score.raw_hygiene_score,hygiene_multiplier:score.hygiene_multiplier,decisions:body.dataHandling});if(passed||raw.hygieneEvents.filter((e:any)=>e.type==='SCREEN_HYGIENE_ATTEMPT').length>=2){raw.dataHandling=body.dataHandling;raw.activePhase=2;}}
     if(body.action==='advance')raw.status='SUBMITTED';
     data=publicSession(raw);
    }
@@ -28,8 +28,8 @@ try{
   await page.goto(base+'/demo');await page.getByRole('button',{name:'Start Assessment'}).click();await page.getByRole('heading',{name:'Data Hygiene Gate',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Briefing',exact:true}).isEnabled(),false);
   for(const f of t.dataGate!.fields){await page.getByLabel('Handling for '+f.fieldName).selectOption(f.expectedAction[0]);await page.getByLabel('Rationale for '+f.fieldName).fill('Minimum safe handling');}
-  await page.getByRole('button',{name:'Submit field classifications'}).click();await page.getByText('Gate passed. Analysis opens at 05:00; the clock is running.').waitFor();
-  raw.activePhase=2;await page.waitForTimeout(2500);await page.getByRole('button',{name:'Ex. 1',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Submit field classifications'}).click();await page.getByRole('button',{name:'Ex. 1',exact:true}).waitFor();
+  await page.waitForTimeout(2500);
   await page.getByRole('button',{name:'Submit Session',exact:true}).waitFor();await page.getByRole('button',{name:'Submit Session',exact:true}).click();await page.getByLabel('Executive memo Markdown').fill('Baseline analysis and decision rationale.');
   await page.getByRole('button',{name:'Close dialog'}).click();await page.getByRole('button',{name:'Save',exact:true}).click();await page.getByRole('status').filter({hasText:/Saved/}).waitFor();
   raw.activePhase=3;raw.shockTriggeredAt=new Date();raw.messages=[{key:'mid_scenario_constraint',payload:t.inboxMessages.find(m=>m.isEmergency)}];

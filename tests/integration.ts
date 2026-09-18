@@ -58,10 +58,10 @@ try{
   const decisions=t.dataGate!.fields.map(f=>({fieldName:f.fieldName,action:f.expectedAction[0],rationale:'Classify safely'}));
   await command('data-handling',{dataHandling:decisions.map(d=>({...d,action:'use-as-is'}))});assert.equal(s.dataHandling,null);assert.equal(s.track.exhibits.length,0);
   await call(candidate,'/copilot/chat',{assessment_id:s.id,track_id:t.id,segment_id:1,request_id:crypto.randomUUID(),purpose:'test',messages:[{role:'user',content:'Analyze this case'}]},403);
-  await command('data-handling',{dataHandling:decisions});assert.ok(s.dataHandling);assert.equal(s.track.exhibits.length,0);
-  await command('save',{screen:{scratchpad:'Too early'}},403);
+  await command('data-handling',{dataHandling:decisions});assert.ok(s.dataHandling);assert.equal(s.phase,2);assert.equal(s.track.exhibits.length,3);
+  await command('save',{screen:{scratchpad:'Available immediately after the gate'}});assert.equal(s.scratchpad,'Available immediately after the gate');
   const originTime=new Date(Date.now()-301000);await db.assessmentSession.update({where:{id:s.id},data:{screenStartedAt:originTime,phaseDeadlineAt:new Date(originTime.getTime()+2400000)}});
-  s=await call(candidate,'/assessment?trackId='+assigned.trackId);assert.equal(s.phase,2);assert.equal(s.track.exhibits.length,2);assert.equal(s.track.emergencyConstraint.memoPoints.length,0);
+  s=await call(candidate,'/assessment?trackId='+assigned.trackId);assert.equal(s.phase,2);assert.equal(s.track.exhibits.length,3);assert.equal(s.track.emergencyConstraint.memoPoints.length,0);
   const branchingDecision={selectedOption:'2',rationale:'Targeted intervention',rejectedAlternatives:'Broad scope violates constraints',dependencies:'Validate available resources',owner:'Executive sponsor',timing:'Within one day',triggerThreshold:'Reverse if failure exceeds 5%'};
   await command('save',{screen:{scratchpad:'Saved analysis',finalDeliverable:'Pre-shock memo',branchingDecision}});
   await command('advance',{},409);
