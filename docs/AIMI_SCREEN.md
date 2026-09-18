@@ -9,11 +9,13 @@ this change does not substitute a different historic rubric.
 
 ## Workflow
 
-Consent starts one fixed 2,400-second server clock. Minutes 0–5 are reserved for
-field classification. All correct classifications unlock analysis at minute 5;
-failed attempts remain auditable and can be retried. A gate unfinished at minute 5
-records a deadline failure and applies the 60-point overall ceiling. Exhibits,
-inbox and Copilot stay blocked until the gate passes. Time continues on retries.
+Consent starts one fixed 2,400-second server clock. The data hygiene gate allows
+two submissions. A perfect first attempt or any second submission unlocks Stage 1
+immediately; a failed first attempt shows only its aggregate score and remaining
+attempt count. Item-level correctness is never revealed. A gate unfinished at
+minute 5 records a deadline failure and applies the 60-point overall ceiling.
+Exhibits, inbox and Copilot stay blocked until the gate is finalized. The server
+clock continues during retries and never forces a five-minute wait after unlock.
 
 Minutes 5–20 allow baseline analysis and one structured branching decision.
 At minute 20, the server freezes a pre-shock checkpoint and releases one emergency
