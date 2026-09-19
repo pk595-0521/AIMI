@@ -13,6 +13,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "node --import tsx prisma/seed.ts",
+    "db:seed-scenarios": "node --import tsx scripts/seed_scenarios.ts",
+    "seed": "node --import tsx scripts/seed_scenarios.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:browser": "node --import tsx tests/browser-smoke.ts",
     "test:integration": "node --import tsx tests/integration.ts"

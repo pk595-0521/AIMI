@@ -65,6 +65,22 @@ model AssessmentTrack {
   criteria RubricCriterion[]
   sessions AssessmentSession[]
 }
+model AimiScenario {
+  id String @id @default(uuid()) @db.Uuid
+  sourceKey String @unique @map("source_key")
+  track String
+  title String
+  role String
+  contextBrief String @map("context_brief")
+  exhibits Json
+  stakeholderInbox Json @map("stakeholder_inbox")
+  branchingOptions Json @map("branching_options")
+  minute20Shock Json @map("minute_20_shock")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@index([track])
+  @@map("aimi_scenarios")
+}
 model AssessmentSession {
   assessmentType AssessmentType @default(AIMI_SUPERDAY)
   screenStartedAt DateTime?

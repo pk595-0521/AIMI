@@ -50,6 +50,32 @@ expired incomplete work remains gradeable.
 
 ## Deployment and verification
 
+The Screen workspace uses three independent scroll regions with Case Exhibits /
+Stakeholder Inbox on the left and Branching Decisions / Deliverables / Preview in
+the center. The visual editor updates memo section five; Preview places that
+artifact above the memo. Mobile users can scroll the workspace horizontally to
+reach its columns while the document remains fixed to the viewport.
+
+`public.aimi_scenarios` holds the server-only scenario pool, indexed by track.
+New Screen assignments randomly select a row for the selected track and snapshot
+it into the session. Existing attempts do not change when pool rows change.
+Baseline source keys are `screen:<track>`; additional scenarios need unique source
+keys. Use Prisma camelCase fields in application code and snake_case columns in
+SQL. Payload validation rejects incomplete scenarios at assignment.
+
+Apply `prisma/migrations/202609180001_aimi_scenarios/migration.sql` before this
+release. Production records this through Supabase as `aimi_scenarios`; do not run
+the full Prisma chain there. `pnpm seed` (alias `pnpm db:seed-scenarios`) seeds the
+four baseline rows using `DATABASE_URL`, without deleting additional rows.
+Startup also upserts baseline rows. Remote seeding through the authenticated
+Supabase SQL connector uses the same payloads. RLS deliberately has no browser
+policies: scenarios include unreleased shocks and are read by the server only.
+
+The September scenario payloads supersede earlier conflicting case figures.
+Baseline exhibits exclude shock outcomes. The Operations shock explicitly
+distinguishes the ordinary $75 SLA penalty from the affected priority contracts'
+$450 penalty, giving $360,000 exposure and a 167-shipment breakeven.
+
 Apply `prisma/migrations/202609140001_aimi_screen/migration.sql` before deploying the
 new application. Production uses Supabase migration history; do not run the full
 Prisma migration chain against its already-existing tables. The production

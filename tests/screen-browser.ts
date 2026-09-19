@@ -16,6 +16,7 @@ try{
    if(['/api/catalog','/api/tracks'].includes(url.pathname))data=[{...t,id:raw.trackId}];
    if(url.pathname==='/api/assessment')data={...publicSession(raw),consented:true};
    if(url.pathname==='/api/copilot/config')data={model:'llama-3.3-70b-versatile'};
+   if(url.pathname==='/api/copilot/chat')return route.fulfill({contentType:'text/event-stream',body:'data: '+JSON.stringify({type:'delta',text:'Evidence '.repeat(1000)})+'\n\ndata: '+JSON.stringify({type:'done',logId:'long-response'})+'\n\n'});
    if(url.pathname==='/api/assessment/sync'){
     assert.equal(body.revision,raw.revision);raw.revision++;
     if(body.screen)Object.assign(raw,body.screen);
@@ -26,17 +27,29 @@ try{
    await route.fulfill({json:data});
   });
   await page.goto(base+'/demo');await page.getByRole('button',{name:'Start Assessment'}).click();await page.getByRole('heading',{name:'Data Hygiene Gate',exact:true}).waitFor();
-  assert.equal(await page.getByRole('button',{name:'Briefing',exact:true}).isEnabled(),false);
+  assert.equal(await page.getByRole('button',{name:'Branching Decisions',exact:true}).count(),0);
   for(const f of t.dataGate!.fields){await page.getByLabel('Handling for '+f.fieldName).selectOption(f.expectedAction[0]);await page.getByLabel('Rationale for '+f.fieldName).fill('Minimum safe handling');}
   await page.getByRole('button',{name:'Submit field classifications'}).click();await page.getByRole('button',{name:'Ex. 1',exact:true}).waitFor();
   await page.waitForTimeout(2500);
-  await page.getByRole('button',{name:'Submit Session',exact:true}).waitFor();await page.getByRole('button',{name:'Submit Session',exact:true}).click();await page.getByLabel('Executive memo Markdown').fill('Baseline analysis and decision rationale.');
+  assert.deepEqual(await page.getByRole('navigation',{name:'Screen workspace tabs'}).getByRole('button').allTextContents(),['Branching Decisions','Deliverables','Preview']);
+  const before=await page.evaluate(()=>({left:document.querySelector('aside > div')?.scrollTop,center:document.querySelector('main')?.scrollTop}));
+  await page.getByLabel('Query purpose').fill('Check evidence');await page.getByLabel('Ask Copilot').fill('Provide a detailed analysis');await page.getByRole('button',{name:'Send query',exact:true}).click();
+  await page.getByTestId('copilot-scroll').getByText('Evidence '.repeat(1000).trim(),{exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>({left:document.querySelector('aside > div')?.scrollTop,center:document.querySelector('main')?.scrollTop})),before);
+  assert.ok(await page.getByTestId('copilot-scroll').evaluate(el=>el.scrollHeight>el.clientHeight));
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollHeight<=innerHeight));
+  const composer=await page.getByRole('button',{name:'Send query',exact:true}).boundingBox();assert.ok(composer&&composer.y+composer.height<=1000);
+  await page.getByRole('button',{name:'Insert five section titles',exact:true}).click();await page.getByRole('button',{name:'Insert required visual template'}).click();
+  await page.getByLabel('Visual artifact Markdown').fill('| Decision | Evidence |\n| --- | --- |\n| Recovery | 167 |');
+  await page.getByRole('button',{name:'Preview',exact:true}).click();await page.getByRole('region',{name:'Visual artifact preview'}).getByRole('table').waitFor();
+  await page.getByRole('button',{name:'Branching Decisions',exact:true}).click();
+  await page.getByRole('button',{name:'Submit Session',exact:true}).waitFor();await page.getByRole('button',{name:'Submit Session',exact:true}).click();await page.getByRole('dialog').getByLabel('Executive memo Markdown').fill('Baseline analysis and decision rationale.');
   await page.getByRole('button',{name:'Close dialog'}).click();await page.getByRole('button',{name:'Save',exact:true}).click();await page.getByRole('status').filter({hasText:/Saved/}).waitFor();
   raw.activePhase=3;raw.shockTriggeredAt=new Date();raw.messages=[{key:'mid_scenario_constraint',payload:t.inboxMessages.find(m=>m.isEmergency)}];
   await page.getByRole('dialog',{name:/URGENT/}).waitFor();await page.getByRole('button',{name:'Open Stakeholder Inbox'}).click();await page.getByText(t.inboxMessages[1].content[0],{exact:true}).waitFor();
-  await page.getByRole('button',{name:'Submit Session',exact:true}).click();const memo=SCREEN_SECTIONS.map((title,i)=>'## '+title+'\n\n'+(i===4?'| Choice | Value |\n| --- | --- |\n| Recovery | 167 |':'Post-shock recommendation and evidence.')).join('\n\n');await page.getByLabel('Executive memo Markdown').fill(memo);await page.getByRole('button',{name:'Preview memo'}).click();await page.getByRole('table').waitFor();await page.screenshot({path:`tests/artifacts/screen-${t.id}-memo.png`});await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Submit Session',exact:true}).click();const memo=SCREEN_SECTIONS.map((title,i)=>'## '+title+'\n\n'+(i===4?'| Choice | Value |\n| --- | --- |\n| Recovery | 167 |':'Post-shock recommendation and evidence.')).join('\n\n');await page.getByRole('dialog').getByLabel('Executive memo Markdown').fill(memo);await page.getByRole('button',{name:'Preview memo'}).click();await page.getByRole('dialog').getByRole('table').waitFor();await page.screenshot({path:`tests/artifacts/screen-${t.id}-memo.png`});await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'Save',exact:true}).click();await page.getByRole('status').filter({hasText:/Saved/}).waitFor();assert.equal(raw.finalDeliverable,memo);
   await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:`tests/artifacts/screen-${t.id}-mobile.png`});
-  await page.getByRole('button',{name:'Submit Session',exact:true}).click();await page.getByRole('button',{name:'Submit final memo'}).click();await page.getByText('Submitted for human review.').waitFor();assert.equal(raw.status,'SUBMITTED');assert.deepEqual(errors,[]);await page.close();console.log('PASS Screen browser '+t.id+': gate, autosave, timed shock, memo/table, mobile and submission');
+  await page.getByRole('button',{name:'Submit Session',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Submit final memo'}).click();await page.getByText('Submitted for human review.').waitFor();assert.equal(raw.status,'SUBMITTED');assert.deepEqual(errors,[]);await page.close();console.log('PASS Screen browser '+t.id+': gate, autosave, timed shock, memo/table, mobile and submission');
  }
 }finally{await browser.close();}

@@ -17,7 +17,7 @@ try{
  await pg.initialise();await pg.start();await pg.createDatabase('aimi_test');
  process.env.DATABASE_URL=`postgresql://aimi_test:local-test-only@127.0.0.1:${port}/aimi_test`;
  const client=pg.getPgClient('aimi_test');await client.connect();
- for(const migration of ['202609100001_initial','202609100002_revised_design','20260913021939_archive_assessments','202609140001_aimi_screen'])await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`,'utf8'));
+ for(const migration of ['202609100001_initial','202609100002_revised_design','20260913021939_archive_assessments','202609140001_aimi_screen','202609180001_aimi_scenarios'])await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`,'utf8'));
  await client.query('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role');
  await client.query(await readFile('supabase/migrations/20260912213026_copilot_audit_logs_view.sql','utf8'));
  await client.query('CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text)');await client.end();
@@ -35,6 +35,7 @@ try{
  const stableJson=(value:any)=>JSON.parse(JSON.stringify(value,(_key,v)=>typeof v==='number'?Number(v.toPrecision(14)):v));
  const {seedCatalog}=await import('../server/catalog');await seedCatalog();await seedCatalog();
  assert.equal(await db.assessmentTrack.count(),8);
+ assert.equal(await db.aimiScenario.count(),4);
  const catalog=await call(applicant,'/catalog');assert.equal(catalog.length,8);assert.ok(catalog.every((t:any)=>!t.exhibits&&!t.rubric&&!t.emergencyConstraint.memoPoints));
  await call(applicant,'/admin/people',undefined,403);
  const people=await call(employer,'/admin/people');assert.ok(people.some((p:any)=>p.id===applicant.id));assert.ok(!people.some((p:any)=>p.id===outsider.id));
@@ -49,8 +50,16 @@ try{
 
  const {SCREEN_TRACKS,SCREEN_SECTIONS,SCREEN_RUBRIC}=await import('../src/data/screen');
  for(const t of SCREEN_TRACKS){
+  const pool=await db.aimiScenario.findUniqueOrThrow({where:{sourceKey:`screen:${t.id}`}});
+  assert.equal(pool.exhibits.length,3);assert.equal(pool.stakeholderInbox.length,3);
+  const databaseBrief='Database-edited context for '+t.id;
+  await db.aimiScenario.update({where:{id:pool.id},data:{contextBrief:databaseBrief,stakeholderInbox:pool.stakeholderInbox.map((m:any)=>({...m,subject:m.subject+' (database)'}))}});
   const candidate=await user('APPLICANT','screen-'+t.id);
   const assigned=await call(employer,'/admin/assignments',{candidateId:candidate.id,trackId:t.id+'-screen-v1',assessmentType:'AIMI_SCREEN',graderId:grader.id},201);
+  const snapshot=(await db.assessmentSession.findUniqueOrThrow({where:{id:assigned.sessionId}})).scenarioSnapshot;
+  assert.equal(snapshot.companyBackground,databaseBrief);assert.ok(snapshot.inboxMessages.every((m:any)=>m.subject.endsWith('(database)')));
+  await db.aimiScenario.update({where:{id:pool.id},data:{contextBrief:'Edited after assignment'}});
+  assert.deepEqual((await db.assessmentSession.findUniqueOrThrow({where:{id:assigned.sessionId}})).scenarioSnapshot,snapshot);
   await call(candidate,'/legal/consent',{sessionId:assigned.sessionId,policyVersion:policy.version,monitoringAccepted:true,zeroRetrainingAccepted:true,humanReviewAccepted:true},201);
   let s=await call(candidate,'/assessment?trackId='+assigned.trackId);
   assert.equal(s.track.exhibits.length,0);assert.equal(s.phase,1);
