@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from './db';
 import { json } from './assessment';
 import { HttpError } from './validation';
-import { trackSummary } from './catalog';
+import { loadScenarioForTrack, trackSummary } from './catalog';
 import type { AuthRequest } from './auth';
 import type { TrackConfig } from '../src/types';
 const wrap = (fn: (req: AuthRequest, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => { fn(req as AuthRequest, res).catch(next); };
@@ -22,7 +22,7 @@ export async function assignSession(tx: Prisma.TransactionClient, applicant: Use
     if (graderId) await tx.evaluation.upsert({ where: { sessionId_graderId: { sessionId: existing.id, graderId } }, update: {}, create: { sessionId: existing.id, graderId, rubricVersion: track.rubricVersion } });
     return existing;
   }
-  const t = track.scenario as unknown as TrackConfig;
+  const t = await loadScenarioForTrack(tx, trackId, track.scenario as unknown as TrackConfig);
   return tx.assessmentSession.create({ data: {
     applicantId: applicant.id, organizationId: applicant.organizationId, trackId,
     assessmentType:t.assessmentType||'AIMI_SUPERDAY', scenarioVersion: track.version, scenarioSnapshot: json(t), rubricSnapshot: json(t.rubric),
