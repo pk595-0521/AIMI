@@ -56,6 +56,17 @@ the center. The visual editor updates memo section five; Preview places that
 artifact above the memo. Mobile users can scroll the workspace horizontally to
 reach its columns while the document remains fixed to the viewport.
 
+The scenario brief starts expanded above the center tabs, with a sticky collapse
+toggle. Copilot has no preset prompt buttons. Deliverables includes a spreadsheet
+with editable column names, labels, numeric values, rows and series, plus Bar,
+Line, Pie and Stacked Bar charts. Pie supports one nonnegative numeric series;
+the other charts support multiple series and negative values. Invalid values
+show a message and block valid submission. Charts use an SVG preview above the
+five-part memo. The chart type is saved as an HTML comment beside the Markdown
+table in section five, preserving the existing memo, autosave, audit and snapshot
+paths without a new database migration. The underlying table remains available
+to reviewers. Existing Markdown visuals stay intact until explicitly replaced.
+
 `public.aimi_scenarios` holds the server-only scenario pool, indexed by track.
 New Screen assignments randomly select a row for the selected track and snapshot
 it into the session. Existing attempts do not change when pool rows change.

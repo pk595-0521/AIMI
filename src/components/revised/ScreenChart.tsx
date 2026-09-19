@@ -1,0 +1,28 @@
+import React from 'react';
+import {chartTypes,chartError,type ChartGrid,type ChartType} from '../../screen-chart';
+const colors=['#2563eb','#059669','#d97706','#9333ea','#dc2626','#0891b2'];
+
+export function ScreenChartEditor({grid,onChange,disabled}:{grid:ChartGrid;onChange:(g:ChartGrid)=>void;disabled:boolean}) {
+ const error=chartError(grid);
+ return <fieldset disabled={disabled} className="min-w-0"><label className="work-field"><span>Chart type</span><select aria-label="Chart type" value={grid.type} onChange={e=>onChange({...grid,type:e.target.value as ChartType})}>{chartTypes.map(t=><option key={t}>{t}</option>)}</select></label>
+ <p className="work-muted text-sm">Use the first column for labels and the remaining columns for numeric series. Include units in each series name.</p>
+ <div className="overflow-x-auto my-3"><table aria-label="Chart spreadsheet" className="w-full text-sm"><thead><tr>{grid.columns.map((c,j)=><th key={j}><input className="border border-slate-300 p-2 w-36" aria-label={`Column ${j+1} name`} value={c} maxLength={100} onChange={e=>onChange({...grid,columns:grid.columns.map((v,k)=>k===j?e.target.value:v)})}/>{j>0&&grid.columns.length>2&&<button type="button" aria-label={`Remove column ${j+1}`} onClick={()=>onChange({...grid,columns:grid.columns.filter((_,k)=>k!==j),rows:grid.rows.map(r=>r.filter((_,k)=>k!==j))})}>Remove</button>}</th>)}<th>Rows</th></tr></thead><tbody>{grid.rows.map((row,i)=><tr key={i}>{row.map((v,j)=><td key={j}><input className="border border-slate-300 p-2 w-36" aria-label={`Row ${i+1} column ${j+1}`} inputMode={j?'decimal':'text'} value={v} maxLength={j?30:150} onChange={e=>onChange({...grid,rows:grid.rows.map((r,k)=>k===i?r.map((c,l)=>l===j?e.target.value:c):r)})}/></td>)}<td><button type="button" className="work-secondary" disabled={grid.rows.length<=1} aria-label={`Remove row ${i+1}`} onClick={()=>onChange({...grid,rows:grid.rows.filter((_,k)=>k!==i)})}>Remove</button></td></tr>)}</tbody></table></div>
+ <div className="flex gap-2"><button type="button" className="work-secondary" disabled={grid.rows.length>=30} onClick={()=>onChange({...grid,rows:[...grid.rows,grid.columns.map(()=>'')]})}>Add row</button><button type="button" className="work-secondary" disabled={grid.columns.length>=6} onClick={()=>onChange({...grid,columns:[...grid.columns,`Series ${grid.columns.length}`],rows:grid.rows.map(r=>[...r,''])})}>Add series</button></div>{error&&<p role="status" className="work-muted mt-3">{error}</p>}</fieldset>;
+}
+
+export function ScreenChart({grid}:{grid:ChartGrid}) {
+ const error=chartError(grid);if(error)return <p role="status" className="work-warning">{error}</p>;
+ const values=grid.rows.map(r=>r.slice(1).map(Number)),width=640,height=360,left=65,top=20,plotW=550,plotH=250;
+ const stacked=grid.type==='Stacked Bar';
+ const low=Math.min(0,...values.map(r=>stacked?r.filter(v=>v<0).reduce((a,b)=>a+b,0):Math.min(...r)));
+ const high=Math.max(0,...values.map(r=>stacked?r.filter(v=>v>0).reduce((a,b)=>a+b,0):Math.max(...r)));
+ const span=high-low||1,y=(v:number)=>top+(high-v)/span*plotH,x=(i:number)=>left+(i+.5)*plotW/values.length;
+ let angle=-Math.PI/2;const total=values.reduce((a,r)=>a+r[0],0);
+ return <figure className="my-4"><figcaption className="font-semibold">{grid.type} · {grid.columns.slice(1).join(', ')}</figcaption><svg role="img" aria-label={`${grid.type}: ${grid.columns.join(', ')}`} viewBox={`0 0 ${width} ${height}`} className="w-full bg-white rounded border border-slate-200"><title>{grid.type}</title>
+ {grid.type==='Pie Chart'?values.map((r,i)=>{const start=angle;angle+=r[0]/total*Math.PI*2;const cx=320,cy=145,rad=115;return r[0]===total?<circle key={i} cx={cx} cy={cy} r={rad} fill={colors[i%colors.length]}><title>{grid.rows[i][0]}: {r[0]}</title></circle>:<path key={i} fill={colors[i%colors.length]} d={`M ${cx} ${cy} L ${cx+rad*Math.cos(start)} ${cy+rad*Math.sin(start)} A ${rad} ${rad} 0 ${angle-start>Math.PI?1:0} 1 ${cx+rad*Math.cos(angle)} ${cy+rad*Math.sin(angle)} Z`}><title>{grid.rows[i][0]}: {r[0]}</title></path>}):<>
+ {[0,.25,.5,.75,1].map(t=>{const v=low+span*t;return <g key={t}><line x1={left} x2={left+plotW} y1={y(v)} y2={y(v)} stroke="#e2e8f0"/><text x={left-5} y={y(v)+4} textAnchor="end" fontSize="10">{Number(v.toPrecision(4))}</text></g>})}
+ <line x1={left} x2={left+plotW} y1={y(0)} y2={y(0)} stroke="#64748b"/>
+ {grid.type==='Line Chart'?grid.columns.slice(1).map((c,j)=><g key={j}><polyline fill="none" stroke={colors[j%colors.length]} strokeWidth="2" points={values.map((r,i)=>`${x(i)},${y(r[j])}`).join(' ')}/>{values.map((r,i)=><circle key={i} cx={x(i)} cy={y(r[j])} r="4" fill={colors[j%colors.length]}><title>{grid.rows[i][0]} — {c}: {r[j]}</title></circle>)}</g>):values.map((r,i)=>{let positive=0,negative=0;const groupW=plotW/values.length*.7;return r.map((v,j)=>{const start=stacked?(v>=0?positive:negative):0;if(stacked){if(v>=0)positive+=v;else negative+=v;}const end=start+v;const barW=stacked?groupW:groupW/r.length;return <rect key={`${i}-${j}`} x={x(i)-groupW/2+(stacked?0:j*barW)} y={Math.min(y(start),y(end))} width={barW*.95} height={Math.abs(y(end)-y(start))} fill={colors[j%colors.length]}><title>{grid.rows[i][0]} — {grid.columns[j+1]}: {v}</title></rect>})})}
+ {grid.rows.map((r,i)=><text key={i} x={x(i)} y={290} fontSize="10" textAnchor="end" transform={`rotate(-25 ${x(i)} 290)`}>{r[0].slice(0,22)}</text>)}
+ </>}</svg><div className="flex flex-wrap gap-3 text-xs mt-2">{(grid.type==='Pie Chart'?grid.rows.map(r=>r[0]):grid.columns.slice(1)).map((v,i)=><span key={i}><span style={{color:colors[i%colors.length]}}>■ </span>{v}</span>)}</div></figure>;
+}

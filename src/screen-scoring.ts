@@ -1,4 +1,5 @@
 import { SCREEN_RUBRIC, SCREEN_SECTIONS } from './data/screen';
+import {decodeChart,chartError} from './screen-chart';
 export interface ScreenCaps {privacyLeak:boolean; gateFailure:boolean; pmBroadLaunch:boolean; shockNonAdaptation:boolean; missingVisual:boolean; consultingUnsafeExpansion:boolean; ibMissingDownside:boolean; calibrationNo:number; evidence:string}
 export const EMPTY_SCREEN_CAPS:ScreenCaps={privacyLeak:false,gateFailure:false,pmBroadLaunch:false,shockNonAdaptation:false,missingVisual:false,consultingUnsafeExpansion:false,ibMissingDownside:false,calibrationNo:0,evidence:''};
 // Accept documented Markdown tables and fenced flowcharts, not decorative prose or images.
@@ -10,8 +11,10 @@ export function countScreenVisuals(memo:string) {
  return charts+tables;
 }
 export function screenMemoProblems(memo:string) {
+ const chart=decodeChart(memo);
  const headings=[...memo.matchAll(/^## (.+)\s*$/gm)];
  const problems:string[]=[];
+ if(chart&&chartError(chart))problems.push(chartError(chart));
  if(headings.length!==5||headings.some((h,i)=>h[1].trim()!==SCREEN_SECTIONS[i]))problems.push('Use the five required Markdown section titles in order.');
  if(headings.some((h,i)=>!memo.slice(h.index!+h[0].length,headings[i+1]?.index??memo.length).trim()))problems.push('Complete all five memo sections.');
  if(countScreenVisuals(memo)!==1)problems.push('Include exactly one Markdown table or fenced ASCII/Mermaid flowchart.');
