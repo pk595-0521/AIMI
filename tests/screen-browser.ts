@@ -29,6 +29,7 @@ try{
   await page.goto(base+'/demo');await page.getByRole('button',{name:'Start Assessment'}).click();await page.getByRole('heading',{name:'Data Hygiene Gate',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Branching Decisions',exact:true}).count(),0);
   for(const f of t.dataGate!.fields){await page.getByLabel('Handling for '+f.fieldName).selectOption(f.expectedAction[0]);await page.getByLabel('Rationale for '+f.fieldName).fill('Minimum safe handling');}
+  await page.getByRole('button',{name:'Hide Scenario Brief'}).click();assert.equal(await page.getByRole('region',{name:'Scenario Brief',exact:true}).count(),0);await page.getByRole('button',{name:'Show Scenario Brief'}).click();await page.getByRole('region',{name:'Scenario Brief',exact:true}).waitFor();
   await page.getByRole('button',{name:'Submit field classifications'}).click();await page.getByRole('button',{name:'Ex. 1',exact:true}).waitFor();
   await page.waitForTimeout(2500);
   assert.deepEqual(await page.getByRole('navigation',{name:'Screen workspace tabs'}).getByRole('button').allTextContents(),['Branching Decisions','Deliverables','Preview']);
@@ -40,8 +41,21 @@ try{
   assert.ok(await page.evaluate(()=>document.documentElement.scrollHeight<=innerHeight));
   const composer=await page.getByRole('button',{name:'Send query',exact:true}).boundingBox();assert.ok(composer&&composer.y+composer.height<=1000);
   await page.getByRole('button',{name:'Insert five section titles',exact:true}).click();await page.getByRole('button',{name:'Insert required visual template'}).click();
-  await page.getByLabel('Visual artifact Markdown').fill('| Decision | Evidence |\n| --- | --- |\n| Recovery | 167 |');
+  await page.getByText('Markdown visual editor',{exact:true}).click();await page.getByLabel('Visual artifact Markdown').fill('| Decision | Evidence |\n| --- | --- |\n| Recovery | 167 |');
   await page.getByRole('button',{name:'Preview',exact:true}).click();await page.getByRole('region',{name:'Visual artifact preview'}).getByRole('table').waitFor();
+  await page.getByRole('button',{name:'Deliverables',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Summarize released facts',exact:true}).count(),0);
+  await page.getByRole('button',{name:'Replace current visual with chart'}).click();
+  await page.getByLabel('Row 1 column 1',{exact:true}).fill('North');await page.getByLabel('Row 1 column 2',{exact:true}).fill('12');
+  await page.getByLabel('Row 2 column 1',{exact:true}).fill('South');await page.getByLabel('Row 2 column 2',{exact:true}).fill('8');
+  for(const type of ['Bar Graph','Line Chart','Pie Chart','Stacked Bar']){
+   await page.getByLabel('Chart type',{exact:true}).selectOption(type);await page.getByRole('button',{name:'Preview',exact:true}).click();await page.getByRole('img',{name:type+': Label, Value',exact:true}).waitFor();await page.getByRole('button',{name:'Deliverables',exact:true}).click();
+  }
+  await page.getByRole('button',{name:'Add series',exact:true}).click();await page.getByLabel('Row 1 column 3',{exact:true}).fill('4');await page.getByLabel('Row 2 column 3',{exact:true}).fill('6');
+  await page.getByRole('button',{name:'Add row',exact:true}).click();await page.getByRole('button',{name:'Remove row 3',exact:true}).click();
+  await page.getByRole('button',{name:'Save',exact:true}).click();await page.getByRole('status').filter({hasText:/Saved/}).waitFor();
+  await page.reload();await page.getByRole('button',{name:'Start Assessment'}).click();await page.getByLabel('Chart type',{exact:true}).waitFor();assert.equal(await page.getByLabel('Chart type',{exact:true}).inputValue(),'Stacked Bar');assert.equal(await page.getByLabel('Row 1 column 3',{exact:true}).inputValue(),'4');
+  await page.getByRole('button',{name:'Preview',exact:true}).click();await page.screenshot({path:`tests/artifacts/screen-${t.id}-chart.png`});
   await page.getByRole('button',{name:'Branching Decisions',exact:true}).click();
   await page.getByRole('button',{name:'Submit Session',exact:true}).waitFor();await page.getByRole('button',{name:'Submit Session',exact:true}).click();await page.getByRole('dialog').getByLabel('Executive memo Markdown').fill('Baseline analysis and decision rationale.');
   await page.getByRole('button',{name:'Close dialog'}).click();await page.getByRole('button',{name:'Save',exact:true}).click();await page.getByRole('status').filter({hasText:/Saved/}).waitFor();
