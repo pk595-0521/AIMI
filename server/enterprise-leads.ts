@@ -27,4 +27,4 @@ export function leadHandler(save = saveEnterpriseLead): RequestHandler {
   };
 }
 export const enterpriseLeads = Router();
-enterpriseLeads.post('/enterprise-leads', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false }), leadHandler());
+enterpriseLeads.post(['/enterprise-leads', '/lead'], rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false }), leadHandler());
