@@ -16,6 +16,7 @@ import {unsafePrompt,sanitizedContext} from './governance';
 import {automatedAdvisory,evaluationEvidence,graderPrompt} from './evaluation';
 import { scoreRubric, sessionHygiene } from './workflow';
 import type { TrackConfig } from '../src/types';
+import { enterpriseLeads } from './enterprise-leads';
 import { betaSignup } from './beta-signup';
 import { canAccessPortal } from '../src/auth-roles';
 import { assignments } from './assignments';
@@ -23,6 +24,7 @@ const handler = (fn: (req: AuthRequest, res: Response) => Promise<any>) => (req:
 export const api = Router();
 api.get('/health', (_req, res) => res.json({ status: 'ok' }));
 api.use('/auth', betaSignup);
+api.use(enterpriseLeads);
 api.use(authenticate);
 api.use((req: AuthRequest, res, next) => {
   // Required even for cookie-authenticated requests; never trust an arbitrary Host header.

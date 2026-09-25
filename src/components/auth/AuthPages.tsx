@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import type { Session } from '@supabase/supabase-js';
 import { ArrowRight, LockKeyhole, ShieldCheck, Sparkles } from 'lucide-react';
 import { supabase, supabaseAuthConfigured } from '../../services/supabase';
 import { api } from '../../services/api';
@@ -11,75 +10,9 @@ function go(path: string) {
 
 async function goToPortal() {
   const identity = await api<{ role: string }>('/me');
-  go(homeForRole(identity.role));
-}
-
-export function LandingPage({ session, onSignOut }: { session: Session | null; onSignOut: () => void }) {
-  const signedIn = Boolean(session?.user);
-  return (
-    <main className="min-h-dvh bg-[#FAFAFA] text-[#1A1A1A]">
-      <nav className="flex items-center justify-between border-b border-[#EBEBEB] bg-white px-6 py-4 sm:px-10">
-        <a href="/" className="font-semibold tracking-tight">AIMI Superday</a>
-        <div className="flex items-center gap-3 text-sm">
-          {signedIn ? (
-            <>
-              <span className="hidden text-[#666] sm:inline">Signed in as {session.user.email}</span>
-              <button type="button" className="work-secondary" onClick={onSignOut}>Sign out</button>
-            </>
-          ) : (
-            <a href="/auth/login" className="work-secondary">Sign In</a>
-          )}
-        </div>
-      </nav>
-      <section className="mx-auto grid min-h-[calc(100dvh-73px)] max-w-6xl items-center gap-12 px-6 py-16 lg:grid-cols-[1.05fr_.95fr] lg:px-10">
-        <div>
-          <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#EBEBEB] bg-white px-3 py-1 text-xs font-mono">
-            <Sparkles className="h-3.5 w-3.5" /> AI-assisted workplace assessment
-          </span>
-          <h1 className="max-w-3xl text-4xl font-medium tracking-tight sm:text-6xl">Make the decision. Explain the evidence.</h1>
-          <p className="mt-6 max-w-2xl text-base leading-7 text-[#666] sm:text-lg">
-            AIMI Superday gives candidates a structured role simulation, gives graders a defensible evidence ledger, and gives employers a clear final recommendation.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            {signedIn ? (
-              <a href="/assessment" className="work-primary">Continue to candidate workspace <ArrowRight className="h-4 w-4" /></a>
-            ) : (
-              <a href="/auth/signup" className="work-primary">Get Started / Sign Up <ArrowRight className="h-4 w-4" /></a>
-            )}
-            <a href="/auth/login" className="work-secondary">Sign In</a>
-          </div>
-          <div className="mt-10 grid gap-3 sm:grid-cols-2">
-            <a href="/grader" className="work-card group transition hover:border-black">
-              <ShieldCheck className="mb-5 h-5 w-5" />
-              <h2 className="text-lg font-medium">Access Grader Portal</h2>
-              <p className="mt-2 text-sm leading-6 text-[#666]">Review candidate evidence, hard signals, checkpoints, and human scoring.</p>
-            </a>
-            <a href="/employer" className="work-card group transition hover:border-black">
-              <LockKeyhole className="mb-5 h-5 w-5" />
-              <h2 className="text-lg font-medium">Employer / Admin Portal</h2>
-              <p className="mt-2 text-sm leading-6 text-[#666]">Open finalized recommendations and verified assessment records.</p>
-            </a>
-          </div>
-        </div>
-        <div className="work-card bg-white p-5 sm:p-8">
-          <p className="work-eyebrow">One workspace · three perspectives</p>
-          <div className="work-stack">
-            {[
-              ['Candidate', 'Work through five timed segments with a data hygiene gate, audited Copilot, and mid-case update.'],
-              ['Grader', 'Compare pre- and post-shock work, inspect AI verification, and score against rubric anchors.'],
-              ['Employer', 'Read the five-part recommendation with confidence, risks, monitoring, and uncertainty.'],
-            ].map(([title, text], index) => (
-              <article key={title} className="border-t border-[#EBEBEB] pt-5 first:border-t-0 first:pt-0">
-                <p className="text-xs font-mono text-[#888]">0{index + 1}</p>
-                <h2 className="mt-2 text-xl font-medium">{title}</h2>
-                <p className="mt-2 text-sm leading-6 text-[#666]">{text}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-    </main>
-  );
+  const next = new URLSearchParams(window.location.search).get('next');
+  const allowed = ['/screen', '/superday', '/assessment', '/admin', '/employer', '/grader'];
+  go(next && allowed.includes(next) ? next : homeForRole(identity.role));
 }
 
 function AuthShell({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {

@@ -15,6 +15,12 @@ export default defineConfig(() => {
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(supabaseUrl),
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(supabaseAnonKey),
     },
+    build: { rollupOptions: { output: { manualChunks(id) {
+      if (!id.includes('node_modules')) return;
+      if (id.includes('supabase')) return 'supabase';
+      if (/react-markdown|remark|rehype|micromark|mdast|hast|unified|unist|vfile/.test(id)) return 'markdown';
+      return 'vendor';
+    } } } },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

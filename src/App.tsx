@@ -44,7 +44,8 @@ import { AssessmentSubmittedModal } from './components/modals/AssessmentSubmitte
 import { TrackSelectionView } from './components/track-selection/TrackSelectionView';
 import { UserCheck, Inbox, ShieldCheck, X, AlertTriangle, Lock } from 'lucide-react';
 import { supabase, getSupabaseSession } from './services/supabase';
-import { LandingPage, SignupPage, LoginPage, AuthRequired, AccessDenied } from './components/auth/AuthPages';
+import { LandingPage } from './components/landing/LandingPage';
+import { SignupPage, LoginPage, AuthRequired, AccessDenied } from './components/auth/AuthPages';
 import { canAccessPortal } from './auth-roles';
 import { PracticeTracks } from './components/admin/Assignments';
 

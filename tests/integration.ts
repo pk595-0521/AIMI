@@ -20,6 +20,7 @@ try{
  for(const migration of ['202609100001_initial','202609100002_revised_design','20260913021939_archive_assessments','202609140001_aimi_screen','202609180001_aimi_scenarios'])await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`,'utf8'));
  await client.query('CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role');
  await client.query(await readFile('supabase/migrations/20260912213026_copilot_audit_logs_view.sql','utf8'));
+ await client.query(await readFile('supabase/migrations/20260925180911_enterprise_leads.sql','utf8'));
  await client.query('CREATE TABLE public.profiles (id uuid PRIMARY KEY, full_name text)');await client.end();
  db=(await import('../server/db')).db;
  const {privateKey,publicKey}=await generateKeyPair('RS256');const jwk={...await exportJWK(publicKey),kid:'local-test',alg:'RS256',use:'sig'};
@@ -27,6 +28,13 @@ try{
  process.env.AUTH_JWKS_URL=`http://127.0.0.1:${issuer.address().port}/jwks`;process.env.AUTH_ISSUER='aimi-test';process.env.AUTH_AUDIENCE='aimi-test';
  process.env.AI_ZERO_TRAINING_VERIFIED='true';process.env.AI_CONTRACT_REFERENCE='LOCAL TEST FIXTURE ONLY';process.env.GEMINI_API_KEY='not-a-live-key';process.env.GEMINI_MODEL='not-a-live-model';
  const {api,apiError}=await import('../server/routes');const app=express();app.use(express.json({limit:'1mb'}));app.use('/api',api);app.use(apiError);server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.on('listening',r));const origin=`http://127.0.0.1:${server.address().port}`;process.env.APP_ORIGIN=origin;
+ const lead = {full_name:'Pilot Tester',work_email:'pilot@example.test',company_name:'Pilot Company',team_size:'11–50',track_interest:'IB'};
+ const postLead = (body:any) => fetch(origin+'/api/enterprise-leads',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify(body)});
+ assert.equal((await postLead(lead)).status,201);
+ assert.equal((await postLead({...lead,full_name:'Unverified overwrite'})).status,201);
+ const leadRows = await db.$queryRaw`SELECT full_name FROM public.enterprise_leads WHERE work_email = 'pilot@example.test'`;
+ assert.deepEqual(leadRows,[{full_name:'Pilot Tester'}]);
+ console.log('PASS enterprise leads: real database persistence, duplicate safety and public endpoint');
  const org=await db.organization.create({data:{name:'Isolated integration fixture'}}),otherOrg=await db.organization.create({data:{name:'Other tenant'}});
  async function user(role:string,subject:string,organizationId=org.id){const u=await db.user.create({data:{subject,email:subject+'@test.invalid',role,organizationId,certifiedGrader:role==='GRADER'}});const token=await new SignJWT({}).setProtectedHeader({alg:'RS256',kid:'local-test'}).setSubject(subject).setIssuer('aimi-test').setAudience('aimi-test').setExpirationTime('1h').sign(privateKey);return {...u,token};}
  const applicant=await user('APPLICANT','applicant'),grader=await user('GRADER','grader'),outsider=await user('APPLICANT','outsider',otherOrg.id),employer=await user('EMPLOYER_ADMIN','employer');

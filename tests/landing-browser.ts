@@ -1,0 +1,58 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+const browser = await chromium.launch({headless:true, executablePath:process.env.BROWSER_EXECUTABLE});
+const base = process.env.TEST_BASE_URL || 'http://127.0.0.1:3000';
+const errors: string[] = [];
+try {
+ const page = await browser.newPage({viewport:{width:1440,height:1000}});
+ page.on('pageerror', e => errors.push(e.message));
+ await page.goto(base);
+ await page.getByRole('heading', {level:1}).waitFor();
+ await page.getByRole('button', {name:/02 \/ PM/}).click();
+ await page.getByRole('heading', {name:'Decide what ships next.'}).waitFor();
+ await page.getByLabel('Control value').fill('90');
+ assert.match(await page.getByRole('img').getAttribute('aria-label') || '', /Control 90/);
+ await page.getByLabel('Chart type').selectOption('line');
+ assert.match(await page.getByRole('img').getAttribute('aria-label') || '', /line chart/);
+ await page.getByRole('button', {name:/Reset exhibit/}).click();
+ assert.equal(await page.getByLabel('Control value').inputValue(), '38');
+ await page.getByRole('button', {name:'Pause telemetry'}).click();
+ await page.getByRole('button', {name:'Play telemetry'}).waitFor();
+ await page.getByRole('button', {name:/02 Validate the evidence/}).click();
+ await page.getByLabel('Operational owner').fill('Risk team');
+ await page.getByText(/Risk team reviews the evidence/).waitFor();
+ for (const path of ['/screen','/superday','/admin','/grader']) assert.ok(await page.locator(`a[href="${path}"]`).count());
+ await mkdir('tests/artifacts', {recursive:true});
+ await page.screenshot({path:'tests/artifacts/landing-desktop.png',fullPage:true});
+ await page.getByRole('button', {name:'Request Enterprise Pilot',exact:true}).click();
+ await page.getByLabel('Full name', {exact:true}).fill('Demo Tester');
+ await page.getByLabel('Work email').fill('demo@example.test');
+ await page.getByLabel('Company name').fill('Example');
+ await page.getByLabel('Team size').selectOption('11–50');
+ await page.getByLabel('Create an AIMI account').uncheck();
+ let shouldFail = true;
+ await page.route('**/api/enterprise-leads', async route => {
+  assert.equal(route.request().postDataJSON().company_name, 'Example');
+  await route.fulfill({status:shouldFail ? 503 : 201,json:shouldFail ? {error:'Please retry shortly.'} : {saved:true}});
+ });
+ await page.getByRole('button', {name:'Continue to booking'}).click();
+ await page.getByRole('alert').filter({hasText:'Please retry shortly.'}).waitFor();
+ assert.equal(await page.locator('iframe').count(), 0);
+ shouldFail = false;
+ await page.route('https://calendly.com/**', route => route.fulfill({body:'<p>Calendly embed fixture</p>',contentType:'text/html'}));
+ await page.getByRole('button', {name:'Continue to booking'}).click();
+ await page.getByText('Your pilot request is saved.').waitFor();
+ assert.match(await page.locator('iframe').getAttribute('src') || '', /^https:\/\/calendly.com\/pk595-cornell\/aimi/);
+ await page.keyboard.press('Escape');
+ assert.equal(await page.locator('dialog').count(),0);
+ assert.equal(await page.getByRole('button', {name:'Request Enterprise Pilot',exact:true}).evaluate(el => el === document.activeElement), true);
+ await page.setViewportSize({width:390,height:844});
+ assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+ await page.getByRole('button',{name:'Toggle navigation'}).click();
+ await page.getByRole('navigation').getByRole('link',{name:'Security',exact:true}).click();
+ await page.screenshot({path:'tests/artifacts/landing-mobile.png',fullPage:true});
+ for (const path of ['/screen','/superday','/admin']) { await page.goto(base+path); await page.waitForURL('**/auth/login?next='+encodeURIComponent(path)); }
+ assert.deepEqual(errors, []);
+ console.log('PASS landing: tracks, chart editing, roadmap, portal links, failed/successful booking, modal keyboard/focus, mobile layout and auth redirects');
+} finally { await browser.close(); }

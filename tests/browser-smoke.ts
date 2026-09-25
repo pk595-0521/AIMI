@@ -13,10 +13,10 @@ let record:any;
 try{
 const landing=await browser.newPage({viewport:{width:1440,height:1000}});
 await landing.goto(base);
-await landing.getByRole('link',{name:'Get Started / Sign Up',exact:true}).waitFor();
-await landing.getByRole('navigation').getByRole('link',{name:'Sign In',exact:true}).waitFor();
-await landing.getByRole('link',{name:/^Access Grader Portal/}).waitFor();
-await landing.getByRole('link',{name:/^Employer \/ Admin Portal/}).waitFor();
+await landing.getByRole('button',{name:'Request Enterprise Pilot',exact:true}).waitFor();
+await landing.getByRole('link',{name:'Candidate Login',exact:true}).waitFor();
+await landing.getByRole('link',{name:/^Grader Portal/}).waitFor();
+await landing.getByRole('link',{name:/^Employer \/ Admin/}).waitFor();
 await landing.goto(base+'/auth/signup');
 await landing.getByRole('heading',{name:'Create your account'}).waitFor();
 await landing.getByLabel('Full Name').waitFor();
