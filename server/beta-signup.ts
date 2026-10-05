@@ -1,3 +1,4 @@
+import { isAllowedOrigin } from './origins';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { Router } from 'express';
@@ -18,7 +19,7 @@ export const signupInput = z.object({ name: z.string().trim().min(1).max(200), e
 export const betaSignup = Router();
 betaSignup.post('/signup', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false }), async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (req.headers.origin !== process.env.APP_ORIGIN) { res.status(403).json({ error: 'Invalid request origin' }); return; }
+  if (!isAllowedOrigin(req.headers.origin)) { res.status(403).json({ error: 'Invalid request origin' }); return; }
   const input = signupInput.safeParse(req.body);
   if (!input.success) { res.status(422).json({ error: 'Enter a name, valid email, and password of at least 8 characters.' }); return; }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL;

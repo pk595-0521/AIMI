@@ -1,3 +1,4 @@
+import { isAllowedOrigin } from './origins';
 import {isScreen,assertScreenAnalysis,refreshScreenClock} from './screen-workflow';
 import {effectiveScreenCaps,scoreScreen} from '../src/screen-scoring';
 import {copilot} from './copilot';
@@ -28,7 +29,7 @@ api.use(enterpriseLeads);
 api.use(authenticate);
 api.use((req: AuthRequest, res, next) => {
   // Required even for cookie-authenticated requests; never trust an arbitrary Host header.
-  if (!['GET','HEAD'].includes(req.method) && req.headers.origin !== process.env.APP_ORIGIN) { res.status(403).json({ error: 'Invalid request origin' }); return; }
+  if (!['GET','HEAD'].includes(req.method) && !isAllowedOrigin(req.headers.origin)) { res.status(403).json({ error: 'Invalid request origin' }); return; }
   res.setHeader('Cache-Control', 'no-store'); next();
 });
 api.use(rateLimit({ windowMs: 60000, limit: 180, keyGenerator: req => (req as AuthRequest).user.id, standardHeaders: 'draft-8', legacyHeaders: false }));

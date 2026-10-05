@@ -8,6 +8,9 @@ services:
     branch: main
     buildCommand: pnpm install --frozen-lockfile && pnpm run build
     startCommand: pnpm run start
+    domains:
+      - aimisuperday.com
+      - www.aimisuperday.com
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
@@ -29,7 +32,13 @@ services:
       - key: GROQ_MODEL
         sync: false
       - key: APP_ORIGIN
-        sync: false
+        value: https://aimisuperday.com
+      - key: ALLOWED_ORIGINS
+        value: https://aimisuperday.com,https://www.aimisuperday.com,https://aimi-lvls.onrender.com
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://aimisuperday.com
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: https://aimisuperday.com/api
       - key: AUTH_JWKS_URL
         sync: false
       - key: AUTH_ISSUER

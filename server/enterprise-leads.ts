@@ -1,3 +1,4 @@
+import { isAllowedOrigin } from './origins';
 import { Router, type RequestHandler } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
@@ -19,7 +20,7 @@ export async function saveEnterpriseLead(input: z.infer<typeof enterpriseLeadInp
 export function leadHandler(save = saveEnterpriseLead): RequestHandler {
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    if (!process.env.APP_ORIGIN || req.headers.origin !== process.env.APP_ORIGIN) { res.status(403).json({ error: 'Invalid request origin' }); return; }
+    if (!isAllowedOrigin(req.headers.origin)) { res.status(403).json({ error: 'Invalid request origin' }); return; }
     const parsed = enterpriseLeadInput.safeParse(req.body);
     if (!parsed.success) { res.status(422).json({ error: 'Enter your name, work email, company, team size, and track interest.' }); return; }
     try { await save(parsed.data); res.status(201).json({ saved: true }); }
